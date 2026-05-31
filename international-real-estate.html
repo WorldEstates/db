@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>International Real Estate</title>
+<title>WorldEstates — Database Immobiliare</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -418,7 +418,7 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
 <!-- TOPBAR -->
 <div class="topbar">
   <div class="brand">
-    International Real Estate
+    WorldEstates
     <small>Private Property Database</small>
   </div>
   <div class="topbar-nav">
@@ -1125,7 +1125,7 @@ async function uploadToCloudinary(file){
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CLOUDINARY_PRESET);
-  formData.append('folder', 'international-real-estate');
+  formData.append('folder', 'worldestates');
   const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, {
     method: 'POST',
     body: formData
@@ -2178,8 +2178,8 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}
 }
 // ════════════════════════════════════════════════════════
 const GITHUB_TOKEN = ['ghp_XgVuChaJQYNpbIIQk51U6n', 'rQBwO5RO49KjDZ'].join('');
-const GITHUB_OWNER = 'fr-realty';
-const GITHUB_REPO = 'international-real-estate';
+const GITHUB_OWNER = 'WorldEstates';
+const GITHUB_REPO = 'db';
 const GITHUB_BRANCH = 'main';
 let currentShareLink = '';
 
