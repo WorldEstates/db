@@ -262,6 +262,9 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
 .pw-box p{font-size:13px;color:var(--muted);margin-bottom:1.25rem}
 .pw-box input{width:100%;padding:10px 12px;font-size:15px;letter-spacing:.1em;text-align:center;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--r)}
 .pw-error{color:var(--red);font-size:12px;margin-bottom:10px;min-height:16px}
+.sel-btn{background:transparent;border:1px solid var(--border2);color:var(--muted);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:'Jost',sans-serif}
+.sel-btn:hover{border-color:var(--gold);color:var(--gold)}
+.sel-btn.sel-active{background:var(--gold);border-color:var(--gold);color:var(--navy)}
 .mob-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--navy);border-top:1px solid rgba(201,168,76,.25);z-index:90;height:58px;align-items:center;justify-content:space-around;padding:0 4px}
 .mob-bar-btn{display:flex;flex-direction:column;align-items:center;gap:3px;color:rgba(255,255,255,.55);font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;padding:6px 10px;border:none;background:none;transition:color .15s;border-radius:var(--r);flex:1}
 .mob-bar-btn .ico{font-size:22px;line-height:1}
@@ -839,6 +842,41 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
 </div>
 </div>
 
+<!-- BARRA SELEZIONE MULTIPLA -->
+<div id="selBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:95;background:var(--navy);border-top:2px solid var(--gold);padding:12px 1.5rem;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="color:var(--gold);font-size:18px">📋</span>
+    <span style="color:#fff;font-size:13px;font-weight:500"><strong id="selCount" style="color:var(--gold)">0</strong> immobili selezionati</span>
+    <button class="btn btn-ghost btn-sm" onclick="clearSelection()">✕ Svuota</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-gold btn-sm" onclick="generateSelectionLink()">🔗 Genera Link Selezione</button>
+  </div>
+</div>
+
+<!-- MODAL LINK SELEZIONE -->
+<div class="overlay" id="selLinkModal">
+<div class="modal modal-sm">
+  <div class="modal-title">📋 Selezione Immobili per Cliente</div>
+  <div id="selLinkInfo" style="background:var(--off);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:1rem;font-size:13px;color:var(--muted)"></div>
+  <div id="selLinkGenBtn" style="margin-bottom:1rem">
+    <button class="btn btn-gold" style="width:100%" onclick="doGenerateSelLink()">🔗 Pubblica e Genera Link</button>
+  </div>
+  <div id="selLinkBox" style="display:none;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:1rem">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Link selezione (invialo al cliente):</div>
+    <div id="selLinkText" style="font-size:12px;word-break:break-all;color:var(--navy);font-family:monospace;background:var(--cream);padding:8px;border-radius:4px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-gold btn-sm" onclick="copySelLink()">📋 Copia</button>
+      <button class="btn btn-outline btn-sm" onclick="sendSelWA()">📲 WA</button>
+      <button class="btn btn-outline btn-sm" onclick="sendSelEmail()">✉ Email</button>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn btn-outline" onclick="document.getElementById('selLinkModal').classList.remove('open')">Chiudi</button>
+  </div>
+</div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════
      MODAL: PASSWORD
 ══════════════════════════════════════════════════════ -->
@@ -866,7 +904,7 @@ let editingAgentId = null;
 let currentGalIdx = 0;
 let currentMediaAccept = '';
 let currentMediaType = '';
-let isAuthenticated = false;
+let selectedForShare = []; // IDs of properties selected for multi-share
 let pwCallback = null; // function to call after correct password
 
 // ── PASSWORD ─────────────────────────────────────
@@ -1310,6 +1348,8 @@ function renderList(list){
   }
   el.innerHTML = list.map(p => {
     const active = p.id === selectedId ? ' active' : '';
+    const isSelected = selectedForShare.includes(p.id);
+    const selBadge = isSelected ? `<div style="position:absolute;bottom:6px;left:6px;background:var(--gold);color:var(--navy);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">✓</div>` : '';
     const loc = [p.zone, p.city, p.nation].filter(Boolean).join(' · ');
     const tagC = p.deal === 'Affitto' ? 'tag-a' : 'tag-v';
     const firstImg = (p.media||[]).find(m => m.mtype === 'img');
@@ -1324,7 +1364,7 @@ function renderList(list){
     if(p.baths)   specs.push(`<div class="rcard-spec"><span class="spec-ico">🚿</span><div class="spec-block"><span class="spec-val">${p.baths}</span><span class="spec-lbl">Bagni</span></div></div>`);
     if(p.garage)  specs.push(`<div class="rcard-spec"><span class="spec-ico">🅿</span><div class="spec-block"><span class="spec-val">${p.garage}</span><span class="spec-lbl">Garage</span></div></div>`);
     return `<div class="rcard${active}" data-id="${p.id}" onclick="selectProp('${p.id}')">`+
-      `<div class="rcard-img">${imgHtml}<div class="rcard-tag ${tagC}">${p.deal||''}</div></div>`+
+      `<div class="rcard-img">${imgHtml}<div class="rcard-tag ${tagC}">${p.deal||''}</div>${selBadge}</div>`+
       `<div class="rcard-body">`+
         `<div class="rcard-top">`+
           `<div class="rcard-type">${p.type||''}</div>`+
@@ -1333,7 +1373,10 @@ function renderList(list){
           `<div class="rcard-loc">📍 ${loc||'—'}</div>`+
           (p.address?`<div class="rcard-addr">🏠 ${p.address}</div>`:'')+
         `</div>`+
-        `<div class="rcard-specs">${specs.join('')}</div>`+
+        `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">`+
+          `<div class="rcard-specs">${specs.join('')}</div>`+
+          `<button class="sel-btn${isSelected?' sel-active':''}" onclick="event.stopPropagation();toggleSelection('${p.id}')" title="${isSelected?'Rimuovi dalla selezione':'Aggiungi alla selezione'}">${isSelected?'✓ Selezionato':'+ Seleziona'}</button>`+
+        `</div>`+
       `</div>`+
     `</div>`;
   }).join('');
@@ -1437,6 +1480,7 @@ function renderDetail(p){
       <div class="dacts">
         <button class="btn btn-outline btn-sm" onclick="openEditProperty('${p.id}')">✎ Modifica</button>
         <button class="btn btn-danger btn-sm" onclick="deleteProp('${p.id}')">🗑</button>
+        <button class="btn btn-sm ${selectedForShare.includes(p.id)?'btn-gold':'btn-outline'}" onclick="toggleSelection('${p.id}')">${selectedForShare.includes(p.id)?'✓ Selezionato':'+ Seleziona'}</button>
         <button class="btn btn-gold btn-sm" onclick="openShareModal('${p.id}')">📤 Condividi</button>
         <button class="btn btn-outline btn-sm" onclick="printPDF('${p.id}')">🖨 PDF</button>
       </div>
@@ -1947,7 +1991,191 @@ function downloadCard(){
 }
 
 // ════════════════════════════════════════════════════════
-// SHARE — GITHUB PAGES + OPEN GRAPH
+// SELEZIONE MULTIPLA
+// ════════════════════════════════════════════════════════
+function toggleSelection(id){
+  const idx = selectedForShare.indexOf(id);
+  if(idx >= 0) selectedForShare.splice(idx, 1);
+  else selectedForShare.push(id);
+  updateSelBar();
+  applyFilters(); // refresh cards to show/hide badge
+  // Re-render detail if open
+  const p = properties.find(x=>x.id===selectedId);
+  if(p) renderDetail(p);
+}
+
+function updateSelBar(){
+  const bar = document.getElementById('selBar');
+  const cnt = document.getElementById('selCount');
+  if(!bar) return;
+  cnt.textContent = selectedForShare.length;
+  bar.style.display = selectedForShare.length > 0 ? 'flex' : 'none';
+}
+
+function clearSelection(){
+  selectedForShare = [];
+  updateSelBar();
+  applyFilters();
+  const p = properties.find(x=>x.id===selectedId);
+  if(p) renderDetail(p);
+}
+
+function generateSelectionLink(){
+  if(!selectedForShare.length){ alert('Seleziona almeno un immobile.'); return; }
+  const selProps = selectedForShare.map(id=>properties.find(x=>x.id===id)).filter(Boolean);
+  const info = document.getElementById('selLinkInfo');
+  info.innerHTML = `<strong style="color:var(--text)">${selProps.length} immobili selezionati:</strong><br>` +
+    selProps.map(p=>`• ${p.title} — ${fmtPrice(p.price)}`).join('<br>');
+  document.getElementById('selLinkBox').style.display = 'none';
+  document.getElementById('selLinkModal').classList.add('open');
+}
+
+async function doGenerateSelLink(){
+  const btn = document.querySelector('#selLinkGenBtn button');
+  btn.textContent = '⟳ Pubblicazione...';
+  btn.disabled = true;
+
+  const selProps = selectedForShare.map(id=>properties.find(x=>x.id===id)).filter(Boolean);
+  const html = buildSelectionHtml(selProps);
+  const fileName = `selections/sel-${Date.now()}.html`;
+  const encoded = btoa(unescape(encodeURIComponent(html)));
+
+  try{
+    const body = {message:`Selezione ${selProps.length} immobili`, content:encoded, branch:GITHUB_BRANCH};
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
+      method:'PUT',
+      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok) throw new Error(await res.text());
+    const selLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
+    document.getElementById('selLinkText').textContent = selLink;
+    document.getElementById('selLinkBox').style.display = 'block';
+    btn.textContent = '🔄 Rigenera';
+    btn.disabled = false;
+    window._currentSelLink = selLink;
+  }catch(e){
+    btn.textContent = '🔗 Pubblica e Genera Link';
+    btn.disabled = false;
+    alert('Errore: '+e.message);
+  }
+}
+
+function copySelLink(){
+  navigator.clipboard.writeText(window._currentSelLink||'').then(()=>{
+    const btn = event.target; const orig = btn.textContent;
+    btn.textContent = '✓ Copiato!';
+    setTimeout(()=>btn.textContent=orig, 2000);
+  });
+}
+
+function sendSelWA(){
+  const link = window._currentSelLink||'';
+  const n = selectedForShare.length;
+  const msg = `🏠 *${n} immobili selezionati per Lei*\n\nVeda la selezione completa con foto e dettagli:\n${link}\n\n— International Real Estate`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function sendSelEmail(){
+  const link = window._currentSelLink||'';
+  const n = selectedForShare.length;
+  const sub = encodeURIComponent(`${n} immobili selezionati per Lei`);
+  const body = encodeURIComponent(`Gentile Cliente,\n\nIn base alle Sue esigenze abbiamo selezionato ${n} immobili di Suo possibile interesse.\n\nVeda la selezione completa con foto e dettagli:\n${link}\n\nRimanendo a Sua disposizione,\nCordiali saluti\nInternational Real Estate`);
+  window.location.href = `mailto:?subject=${sub}&body=${body}`;
+}
+
+function buildSelectionHtml(props){
+  const fmtP = n => n ? '€ '+Number(n).toLocaleString('it-IT') : '—';
+  const cards = props.map(p=>{
+    const firstImg = (p.media||[]).find(m=>m.mtype==='img');
+    const imgUrl = firstImg ? (firstImg.url||firstImg.data||'') : '';
+    const loc = [p.zone, p.city, p.nation].filter(Boolean).join(' · ');
+    const mapUrl = p.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}` : '';
+    const feats = (p.features||[]).filter(Boolean);
+    const infos = [
+      ['Superficie', p.surface?p.surface+' m²':null],
+      ['Locali', p.rooms],['Camere', p.beds],['Bagni', p.baths],['Garage', p.garage]
+    ].filter(([,v])=>v);
+    // Build individual card link
+    const cardLink = p.shareLink || '';
+    return `<div class="pcard">
+      ${imgUrl?`<img class="pimg" src="${imgUrl}" alt="">`:`<div class="pimg-empty">🏠</div>`}
+      <div class="pbody">
+        <div class="ptag ${p.deal==='Affitto'?'ta':'tv'}">${p.deal||'Vendita'}</div>
+        <div class="ptype">${p.type||''}</div>
+        <div class="pprice">${fmtP(p.price)}${p.deal==='Affitto'?' <small>/mese</small>':''}</div>
+        <div class="ptitle">${p.title||'Immobile'}</div>
+        <div class="ploc">📍 ${loc||'—'}</div>
+        ${p.address?`<div class="paddr">🏠 ${p.address}</div>`:''}
+        ${mapUrl?`<a class="pmaplink" href="${mapUrl}" target="_blank">🗺 Vedi su mappa</a>`:''}
+        ${infos.length?`<div class="pspecs">${infos.map(([l,v])=>`<div class="pspec"><span class="psl">${l}</span><span class="psv">${v}</span></div>`).join('')}</div>`:''}
+        ${feats.length?`<div class="pfeats">${feats.map(f=>`<span class="pfeat">✓ ${f}</span>`).join('')}</div>`:''}
+        ${p.desc?`<div class="pdesc">${p.desc.slice(0,300)}${p.desc.length>300?'...':''}</div>`:''}
+        ${cardLink?`<a href="${cardLink}" target="_blank" class="pdetail">Vedi scheda completa →</a>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const firstImg = props[0] && (props[0].media||[]).find(m=>m.mtype==='img');
+  const ogImg = firstImg ? (firstImg.url||firstImg.data||'') : '';
+
+  return `<!DOCTYPE html>
+<html lang="it"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${props.length} Immobili Selezionati — International Real Estate</title>
+<meta property="og:title" content="${props.length} immobili selezionati per Lei">
+<meta property="og:description" content="${props.map(p=>p.title).join(' · ')}">
+${ogImg?`<meta property="og:image" content="${ogImg}">`:''}
+<meta property="og:site_name" content="International Real Estate">
+<meta name="twitter:card" content="summary_large_image">
+${ogImg?`<meta name="twitter:image" content="${ogImg}">`:''}
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}
+.hdr{background:#0D1B2A;padding:16px 24px;margin-bottom:2rem}
+.hdr-brand{font-family:'Playfair Display',serif;font-size:18px;color:#C9A84C}
+.hdr-brand small{display:block;color:rgba(255,255,255,.4);font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-family:'Jost',sans-serif}
+.hdr-sub{color:rgba(255,255,255,.6);font-size:13px;margin-top:4px}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.5rem 4rem}
+.intro{font-family:'Playfair Display',serif;font-size:26px;color:#0D1B2A;margin-bottom:.5rem}
+.intro-sub{color:#7A8899;font-size:13px;margin-bottom:2rem}
+.pcard{background:#fff;border-radius:10px;overflow:hidden;margin-bottom:1.5rem;box-shadow:0 2px 12px rgba(13,27,42,.08);display:flex;gap:0}
+.pimg{width:280px;min-width:280px;height:210px;object-fit:cover;display:block}
+.pimg-empty{width:280px;min-width:280px;height:210px;background:#f0ece4;display:flex;align-items:center;justify-content:center;font-size:48px;opacity:.2}
+.pbody{flex:1;padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:6px}
+.ptag{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.tv{background:rgba(42,122,74,.12);color:#2A7A4A}.ta{background:rgba(201,168,76,.15);color:#8A6E2F}
+.ptype{font-size:11px;color:#7A8899;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.pprice{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:#8A6E2F}
+.pprice small{font-family:'Jost',sans-serif;font-size:13px;font-weight:400;color:#7A8899}
+.ptitle{font-family:'Playfair Display',serif;font-size:18px;font-weight:600;color:#0D1B2A;line-height:1.3}
+.ploc{font-size:12px;color:#7A8899}
+.paddr{font-size:12px;color:#4A5668;font-style:italic}
+.pmaplink{font-size:12px;color:#8A6E2F;text-decoration:none;font-weight:500}
+.pspecs{display:flex;gap:12px;flex-wrap:wrap;padding:8px 0;border-top:1px solid rgba(201,168,76,.15);border-bottom:1px solid rgba(201,168,76,.15);margin:4px 0}
+.pspec{display:flex;flex-direction:column;gap:1px}
+.psl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#7A8899;font-weight:600}
+.psv{font-size:14px;font-weight:600;color:#0D1B2A}
+.pfeats{display:flex;flex-wrap:wrap;gap:6px}
+.pfeat{background:#F7F3EC;border:1px solid rgba(201,168,76,.2);border-radius:20px;padding:3px 10px;font-size:11px}
+.pdesc{font-size:13px;color:#4A5668;line-height:1.6}
+.pdetail{display:inline-block;margin-top:auto;background:#C9A84C;color:#0D1B2A;padding:8px 18px;border-radius:4px;text-decoration:none;font-weight:600;font-size:13px;align-self:flex-start}
+.foot{background:#0D1B2A;color:rgba(255,255,255,.4);font-size:12px;text-align:center;padding:20px;margin-top:3rem}
+@media(max-width:700px){.pcard{flex-direction:column}.pimg,.pimg-empty{width:100%;min-width:0;height:200px}.pprice{font-size:20px}.intro{font-size:20px}}
+</style></head><body>
+<div class="hdr">
+  <div class="hdr-brand">International Real Estate<small>Property Selection</small></div>
+  <div class="hdr-sub">Selezione di ${props.length} immobili</div>
+</div>
+<div class="wrap">
+  <div class="intro">Immobili selezionati per Lei</div>
+  <div class="intro-sub">Una selezione di ${props.length} proprietà in base alle Sue esigenze</div>
+  ${cards}
+</div>
+<div class="foot">International Real Estate — Selezione generata il ${new Date().toLocaleDateString('it-IT')}</div>
+</body></html>`;
+}
 // ════════════════════════════════════════════════════════
 const GITHUB_TOKEN = ['ghp_XgVuChaJQYNpbIIQk51U6n', 'rQBwO5RO49KjDZ'].join('');
 const GITHUB_OWNER = 'fr-realty';
