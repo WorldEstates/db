@@ -1027,32 +1027,36 @@ async function saveToCloud(){
   isSaving = true;
   showSaveStatus('⟳ Salvataggio...', 'rgba(255,255,255,.5)');
   try{
+    // Get current IDs in Firestore
+    const existingSnap = await db.collection('ire_props').get();
+    const existingIds = existingSnap.docs.map(d => d.id);
+    const currentIds = properties.map(p => p.id);
+
     const batch = db.batch();
 
-    // Save settings (agents + features)
+    // Save settings
     batch.set(db.collection('ire').doc('settings'), {
-      agents,
-      allFeatures,
-      updatedAt: Date.now()
+      agents, allFeatures, updatedAt: Date.now()
     });
 
-    // Save each property as its own document
+    // Save/update current properties
     properties.forEach(p => {
       const doc = {
         ...p,
-        // Store only URL for media (not base64)
         media: (p.media||[]).map(m => ({
-          id: m.id||'',
-          mtype: m.mtype||'img',
-          name: m.name||'',
-          url: m.url||m.data||''
+          id: m.id||'', mtype: m.mtype||'img',
+          name: m.name||'', url: m.url||m.data||''
         }))
       };
       batch.set(db.collection('ire_props').doc(p.id), doc);
     });
 
-    // Delete removed properties
-    // (handled on delete individually)
+    // Delete properties removed locally
+    existingIds.forEach(id => {
+      if(!currentIds.includes(id)){
+        batch.delete(db.collection('ire_props').doc(id));
+      }
+    });
 
     await batch.commit();
     showSaveStatus('✓ Salvato', '#4CAF50');
