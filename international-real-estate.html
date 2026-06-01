@@ -905,7 +905,8 @@ let currentGalIdx = 0;
 let currentMediaAccept = '';
 let currentMediaType = '';
 let selectedForShare = []; // IDs of properties selected for multi-share
-let pwCallback = null; // function to call after correct password
+let isAuthenticated = false;
+let pwCallback = null;
 
 // ── PASSWORD ─────────────────────────────────────
 const APP_PASSWORD = 'ire2024'; // ← cambia questa password come vuoi
