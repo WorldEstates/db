@@ -1612,6 +1612,9 @@ function _openEditProperty(id){
   populateAgentFilter();
   document.getElementById('fAgentSel').value=p.agentId||'';
   switchTab('tab-base',document.querySelector('.tab'));
+  // Close detail panel first to avoid z-index conflict
+  document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('detailDim').classList.remove('open');
   document.getElementById('propModal').classList.add('open');
 }
 
