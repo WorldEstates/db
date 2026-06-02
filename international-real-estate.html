@@ -1027,38 +1027,43 @@ async function saveToCloud(){
   isSaving = true;
   showSaveStatus('⟳ Salvataggio...', 'rgba(255,255,255,.5)');
   try{
-    // Get current IDs in Firestore
+    // Get current IDs in Firestore to find deleted ones
     const existingSnap = await db.collection('ire_props').get();
     const existingIds = existingSnap.docs.map(d => d.id);
     const currentIds = properties.map(p => p.id);
 
-    const batch = db.batch();
-
     // Save settings
-    batch.set(db.collection('ire').doc('settings'), {
+    await db.collection('ire').doc('settings').set({
       agents, allFeatures, updatedAt: Date.now()
     });
 
-    // Save/update current properties
-    properties.forEach(p => {
-      const doc = {
-        ...p,
-        media: (p.media||[]).map(m => ({
-          id: m.id||'', mtype: m.mtype||'img',
-          name: m.name||'', url: m.url||m.data||''
-        }))
-      };
-      batch.set(db.collection('ire_props').doc(p.id), doc);
-    });
+    // Save properties in chunks of 400 (under Firebase 500 limit)
+    const chunkSize = 400;
+    for(let i = 0; i < properties.length; i += chunkSize){
+      const chunk = properties.slice(i, i + chunkSize);
+      const batch = db.batch();
+      chunk.forEach(p => {
+        const doc = {
+          ...p,
+          media: (p.media||[]).map(m => ({
+            id: m.id||'', mtype: m.mtype||'img',
+            name: m.name||'', url: m.url||m.data||''
+          }))
+        };
+        batch.set(db.collection('ire_props').doc(p.id), doc);
+      });
+      await batch.commit();
+    }
 
-    // Delete properties removed locally
-    existingIds.forEach(id => {
-      if(!currentIds.includes(id)){
-        batch.delete(db.collection('ire_props').doc(id));
-      }
-    });
+    // Delete removed properties in chunks
+    const toDelete = existingIds.filter(id => !currentIds.includes(id));
+    for(let i = 0; i < toDelete.length; i += chunkSize){
+      const chunk = toDelete.slice(i, i + chunkSize);
+      const batch = db.batch();
+      chunk.forEach(id => batch.delete(db.collection('ire_props').doc(id)));
+      await batch.commit();
+    }
 
-    await batch.commit();
     showSaveStatus('✓ Salvato', '#4CAF50');
     setTimeout(()=>showSaveStatus('● Online','rgba(201,168,76,.6)'),2000);
   }catch(e){
