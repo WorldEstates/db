@@ -997,10 +997,11 @@ async function initFirebase(){
 }
 
 // ════════════════════════════════════════════════════════
-// SAVE / LOAD — FIREBASE
+// SAVE / LOAD — FIREBASE (SMART - solo modifiche)
 // ════════════════════════════════════════════════════════
 let saveTimer = null;
 let isSaving = false;
+let pendingChanges = { props: new Set(), deleted: new Set(), settings: false };
 
 function showSaveStatus(msg, color){
   const el = document.getElementById('saveStatus');
@@ -1009,66 +1010,117 @@ function showSaveStatus(msg, color){
   el.style.color = color || 'rgba(255,255,255,.5)';
 }
 
-function save(){
-  // Save to localStorage as immediate backup
+// Salva solo una proprietà specifica
+function saveProp(propId){
   try{
     localStorage.setItem('ire_props', JSON.stringify(properties));
+  }catch(e){}
+  pendingChanges.props.add(propId);
+  scheduleSave();
+}
+
+// Salva solo le impostazioni (agenti, caratteristiche)
+function saveSettings(){
+  try{
     localStorage.setItem('ire_agents', JSON.stringify(agents));
     localStorage.setItem('ire_features', JSON.stringify(allFeatures));
   }catch(e){}
+  pendingChanges.settings = true;
+  scheduleSave();
+}
 
+// Segna una proprietà come eliminata
+function markDeleted(propId){
+  pendingChanges.deleted.add(propId);
+  pendingChanges.props.delete(propId);
+  scheduleSave();
+}
+
+function scheduleSave(){
   clearTimeout(saveTimer);
   showSaveStatus('● Non salvato', 'rgba(201,168,76,.8)');
   saveTimer = setTimeout(()=>saveToCloud(), 1500);
 }
 
+// Salvataggio generale (usato per import)
+function save(){
+  try{
+    localStorage.setItem('ire_props', JSON.stringify(properties));
+    localStorage.setItem('ire_agents', JSON.stringify(agents));
+    localStorage.setItem('ire_features', JSON.stringify(allFeatures));
+  }catch(e){}
+  // Per import, salva tutto
+  pendingChanges.settings = true;
+  properties.forEach(p => pendingChanges.props.add(p.id));
+  scheduleSave();
+}
+
 async function saveToCloud(){
   if(isSaving || !db) return;
+  if(!pendingChanges.props.size && !pendingChanges.deleted.size && !pendingChanges.settings) return;
   isSaving = true;
   showSaveStatus('⟳ Salvataggio...', 'rgba(255,255,255,.5)');
+
+  const toSave = [...pendingChanges.props];
+  const toDelete = [...pendingChanges.deleted];
+  const saveSettings = pendingChanges.settings;
+
+  // Clear pending immediately
+  pendingChanges.props.clear();
+  pendingChanges.deleted.clear();
+  pendingChanges.settings = false;
+
   try{
-    // Get current IDs in Firestore to find deleted ones
-    const existingSnap = await db.collection('ire_props').get();
-    const existingIds = existingSnap.docs.map(d => d.id);
-    const currentIds = properties.map(p => p.id);
+    const batch = db.batch();
+    let ops = 0;
 
-    // Save settings
-    await db.collection('ire').doc('settings').set({
-      agents, allFeatures, updatedAt: Date.now()
-    });
-
-    // Save properties in chunks of 400 (under Firebase 500 limit)
-    const chunkSize = 400;
-    for(let i = 0; i < properties.length; i += chunkSize){
-      const chunk = properties.slice(i, i + chunkSize);
-      const batch = db.batch();
-      chunk.forEach(p => {
-        const doc = {
-          ...p,
-          media: (p.media||[]).map(m => ({
-            id: m.id||'', mtype: m.mtype||'img',
-            name: m.name||'', url: m.url||m.data||''
-          }))
-        };
-        batch.set(db.collection('ire_props').doc(p.id), doc);
+    // Save settings if needed
+    if(saveSettings){
+      batch.set(db.collection('ire').doc('settings'), {
+        agents, allFeatures, updatedAt: Date.now()
       });
-      await batch.commit();
+      ops++;
     }
 
-    // Delete removed properties in chunks
-    const toDelete = existingIds.filter(id => !currentIds.includes(id));
-    for(let i = 0; i < toDelete.length; i += chunkSize){
-      const chunk = toDelete.slice(i, i + chunkSize);
-      const batch = db.batch();
-      chunk.forEach(id => batch.delete(db.collection('ire_props').doc(id)));
-      await batch.commit();
+    // Save only changed properties
+    for(const id of toSave){
+      const p = properties.find(x => x.id === id);
+      if(!p) continue;
+      const doc = {
+        ...p,
+        media: (p.media||[]).map(m => ({
+          id: m.id||'', mtype: m.mtype||'img',
+          name: m.name||'', url: m.url||m.data||''
+        }))
+      };
+      batch.set(db.collection('ire_props').doc(id), doc);
+      ops++;
+
+      // Commit batch if approaching limit
+      if(ops >= 490){
+        await batch.commit();
+        ops = 0;
+      }
     }
+
+    // Delete removed properties
+    for(const id of toDelete){
+      batch.delete(db.collection('ire_props').doc(id));
+      ops++;
+    }
+
+    if(ops > 0) await batch.commit();
 
     showSaveStatus('✓ Salvato', '#4CAF50');
     setTimeout(()=>showSaveStatus('● Online','rgba(201,168,76,.6)'),2000);
   }catch(e){
     console.warn('Save error:', e);
-    showSaveStatus('⚠ Errore: '+e.message, '#ff6b6b');
+    // Re-add to pending if failed
+    toSave.forEach(id => pendingChanges.props.add(id));
+    toDelete.forEach(id => pendingChanges.deleted.add(id));
+    if(saveSettings) pendingChanges.settings = true;
+    showSaveStatus('⚠ Errore - riprovo...', '#ff6b6b');
+    setTimeout(()=>saveToCloud(), 5000);
   }
   isSaving = false;
 }
@@ -1717,12 +1769,14 @@ function saveProperty(){
     const idx=properties.findIndex(x=>x.id===editingPropId);
     if(idx>=0) properties[idx]={...properties[idx],...data};
     selectedId=editingPropId;
+    saveProp(editingPropId);
   }else{
     const np={id:uid(),createdAt:Date.now(),...data};
     properties.unshift(np);
     selectedId=np.id;
+    saveProp(np.id);
   }
-  save();
+  localStorage.setItem('ire_props', JSON.stringify(properties));
   closePropModal();
   refreshAll();
   const p=properties.find(x=>x.id===selectedId);
@@ -1733,12 +1787,10 @@ function deleteProp(id){
   requirePassword('Inserisci la password per eliminare questo immobile', async ()=>{
     if(!confirm('Eliminare questo immobile?')) return;
     properties = properties.filter(x => x.id !== id);
+    localStorage.setItem('ire_props', JSON.stringify(properties));
+    markDeleted(id);
     selectedId = null;
-    // Delete from Firestore
-    if(db){
-      try{ await db.collection('ire_props').doc(id).delete(); }catch(e){ console.warn(e); }
-    }
-    save(); refreshAll();
+    refreshAll();
     closeDetailPanel();
   });
 }
@@ -1772,7 +1824,8 @@ function handleMediaUploadDirect(e, propId){
   const files = Array.from(e.target.files);
   uploadMediaFiles(files, propId).then(results => {
     p.media.push(...results);
-    save();
+    localStorage.setItem('ire_props', JSON.stringify(properties));
+    saveProp(propId);
     selectProp(propId);
   });
   e.target.value='';
@@ -1877,6 +1930,7 @@ function saveAgent(){
     agents.push({id:uid(),...data});
   }
   save();populateAgentFilter();renderAgentList();resetAgentForm();
+  saveSettings();
 }
 
 function editAgent(id){
