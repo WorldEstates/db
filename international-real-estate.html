@@ -262,6 +262,8 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
 .pw-box p{font-size:13px;color:var(--muted);margin-bottom:1.25rem}
 .pw-box input{width:100%;padding:10px 12px;font-size:15px;letter-spacing:.1em;text-align:center;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--r)}
 .pw-error{color:var(--red);font-size:12px;margin-bottom:10px;min-height:16px}
+.zone-tag{display:inline-flex;align-items:center;gap:4px;background:var(--gold);color:var(--navy);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.zone-tag button{background:none;border:none;cursor:pointer;color:var(--navy);font-size:13px;line-height:1;padding:0 0 0 2px}
 .sel-btn{background:transparent;border:1px solid var(--border2);color:var(--muted);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:'Jost',sans-serif}
 .sel-btn:hover{border-color:var(--gold);color:var(--gold)}
 .sel-btn.sel-active{background:var(--gold);border-color:var(--gold);color:var(--navy)}
@@ -625,14 +627,30 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
         </select>
       </div>
       <div class="fg">
-        <label>Tipologia *</label>
-        <select id="fPropType">
-          <option>Appartamento</option><option>Villa/Casa</option><option>Stanza</option>
-          <option>Ufficio</option><option>Negozio</option><option>Capannone</option>
-          <option>Laboratorio</option><option>Magazzino</option><option>Palazzo</option>
-          <option>Hotel</option><option>Terreno</option><option>Garage</option>
-          <option>NPL</option><option>Asta</option><option>Attività</option>
-        </select>
+        <label>Tipologia * <span id="fTypeCount" style="color:var(--gold);font-size:10px"></span></label>
+        <div class="multi-drop" id="fTypeDrop2">
+          <div class="multi-drop-btn" onclick="toggleDrop('fTypeDrop2')">
+            <span id="fTypeLabel2">Seleziona...</span>
+            <span class="drop-arrow">▾</span>
+          </div>
+          <div class="multi-drop-list" id="fTypeList2">
+            <label class="multi-cb"><input type="checkbox" value="Appartamento"> Appartamento</label>
+            <label class="multi-cb"><input type="checkbox" value="Villa/Casa"> Villa/Casa</label>
+            <label class="multi-cb"><input type="checkbox" value="Stanza"> Stanza</label>
+            <label class="multi-cb"><input type="checkbox" value="Ufficio"> Ufficio</label>
+            <label class="multi-cb"><input type="checkbox" value="Negozio"> Negozio</label>
+            <label class="multi-cb"><input type="checkbox" value="Capannone"> Capannone</label>
+            <label class="multi-cb"><input type="checkbox" value="Laboratorio"> Laboratorio</label>
+            <label class="multi-cb"><input type="checkbox" value="Magazzino"> Magazzino</label>
+            <label class="multi-cb"><input type="checkbox" value="Palazzo"> Palazzo</label>
+            <label class="multi-cb"><input type="checkbox" value="Hotel"> Hotel</label>
+            <label class="multi-cb"><input type="checkbox" value="Terreno"> Terreno</label>
+            <label class="multi-cb"><input type="checkbox" value="Garage"> Garage</label>
+            <label class="multi-cb"><input type="checkbox" value="NPL"> NPL</label>
+            <label class="multi-cb"><input type="checkbox" value="Asta"> Asta</label>
+            <label class="multi-cb"><input type="checkbox" value="Attività"> Attività</label>
+          </div>
+        </div>
       </div>
       <div class="fg full">
         <label>Titolo / Nome immobile *</label>
@@ -653,9 +671,14 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
         <datalist id="dlCities"></datalist>
       </div>
       <div class="fg">
-        <label>Zona / Quartiere</label>
-        <input type="text" id="fZone2" placeholder="Es. Brera" list="dlZones">
-        <datalist id="dlZones"></datalist>
+        <label>Zona / Quartiere <span id="fZoneCount" style="color:var(--gold);font-size:10px"></span></label>
+        <div style="border:1px solid #ddd;border-radius:var(--r);background:var(--off);padding:6px 8px;min-height:38px;cursor:text" onclick="document.getElementById('fZoneInput').focus()">
+          <div id="fZoneTags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px"></div>
+          <input type="text" id="fZoneInput" placeholder="Scrivi zona e premi Invio..." list="dlZones"
+            style="border:none;background:transparent;outline:none;font-size:13px;width:100%"
+            onkeydown="addZoneTag(event)" oninput="updateZoneDropdown()">
+          <datalist id="dlZones"></datalist>
+        </div>
       </div>
       <div class="fg full">
         <label>Indirizzo (per mappa)</label>
@@ -1240,7 +1263,78 @@ function roomsVal(v){
 // ════════════════════════════════════════════════════════
 // FILTERS & LIST
 // ════════════════════════════════════════════════════════
-// ── MULTI-DROP HELPERS ───────────────────────────
+// ── ZONE TAGS ─────────────────────────────────────
+let formZones = [];
+
+function addZoneTag(e){
+  if(e.key === 'Enter' || e.key === ','){
+    e.preventDefault();
+    const val = document.getElementById('fZoneInput').value.trim();
+    if(val && !formZones.includes(val)){
+      formZones.push(val);
+      renderZoneTags();
+    }
+    document.getElementById('fZoneInput').value = '';
+  }
+}
+
+function updateZoneDropdown(){
+  // Allow selecting from datalist by clicking
+  const inp = document.getElementById('fZoneInput');
+  const val = inp.value.trim();
+  if(val && !formZones.includes(val)){
+    // Check if matches datalist
+    const dl = document.getElementById('dlZones');
+    const opts = [...dl.options].map(o => o.value);
+    if(opts.includes(val)){
+      formZones.push(val);
+      renderZoneTags();
+      inp.value = '';
+    }
+  }
+}
+
+function removeZoneTag(zone){
+  formZones = formZones.filter(z => z !== zone);
+  renderZoneTags();
+}
+
+function renderZoneTags(){
+  const container = document.getElementById('fZoneTags');
+  if(!container) return;
+  container.innerHTML = formZones.map(z =>
+    `<span class="zone-tag">${z}<button onclick="removeZoneTag('${z}')" type="button">×</button></span>`
+  ).join('');
+  const cnt = document.getElementById('fZoneCount');
+  if(cnt) cnt.textContent = formZones.length > 1 ? `(${formZones.length})` : '';
+}
+
+// ── TIPOLOGIE MULTIPLE ────────────────────────────
+function getFormTypes(){
+  return [...document.querySelectorAll('#fTypeList2 input:checked')].map(cb => cb.value);
+}
+
+function setFormTypes(types){
+  document.querySelectorAll('#fTypeList2 input').forEach(cb => {
+    cb.checked = Array.isArray(types) ? types.includes(cb.value) : cb.value === types;
+  });
+  updateFormTypeLabel();
+}
+
+function updateFormTypeLabel(){
+  const types = getFormTypes();
+  const lbl = document.getElementById('fTypeLabel2');
+  const cnt = document.getElementById('fTypeCount');
+  if(!lbl) return;
+  if(!types.length){ lbl.textContent = 'Seleziona...'; if(cnt) cnt.textContent = ''; }
+  else if(types.length === 1){ lbl.textContent = types[0]; if(cnt) cnt.textContent = ''; }
+  else { lbl.textContent = types[0]+'...'; if(cnt) cnt.textContent = `+${types.length-1}`; }
+}
+
+// Update label when checkbox changes
+document.addEventListener('change', e => {
+  if(e.target.closest('#fTypeList2')) updateFormTypeLabel();
+});
 function toggleDrop(id){
   const el = document.getElementById(id);
   const wasOpen = el.classList.contains('open');
@@ -1347,8 +1441,14 @@ function applyFilters(){
     if(deal && p.deal !== deal) return false;
     if(nat && p.nation !== nat) return false;
     if(cities.length && !cities.includes(p.city)) return false;
-    if(zones.length && !zones.includes(p.zone)) return false;
-    if(types.length && !types.includes(p.type)) return false;
+    if(zones.length){
+      const pZones = Array.isArray(p.zone) ? p.zone : (p.zone ? [p.zone] : []);
+      if(!zones.some(z => pZones.includes(z))) return false;
+    }
+    if(types.length){
+      const pTypes = Array.isArray(p.type) ? p.type : (p.type ? [p.type] : []);
+      if(!types.some(t => pTypes.includes(t))) return false;
+    }
     if(agent && p.agentId !== agent) return false;
     if(p.price && (p.price < prMin || p.price > prMax)) return false;
     if(rooms.length){
@@ -1412,7 +1512,7 @@ function renderList(list){
     const active = p.id === selectedId ? ' active' : '';
     const isSelected = selectedForShare.includes(p.id);
     const selBadge = isSelected ? `<div style="position:absolute;bottom:6px;left:6px;background:var(--gold);color:var(--navy);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">✓</div>` : '';
-    const loc = [p.zone, p.city, p.nation].filter(Boolean).join(' · ');
+    const zoneStr = Array.isArray(p.zone)?p.zone.join(" / "):p.zone; const typeStr = Array.isArray(p.type)?p.type.join(" / "):p.type; const loc = [zoneStr, p.city, p.nation].filter(Boolean).join(' · ');
     const tagC = p.deal === 'Affitto' ? 'tag-a' : 'tag-v';
     const firstImg = (p.media||[]).find(m => m.mtype === 'img');
     const imgSrc = firstImg ? (firstImg.url || firstImg.data || '') : '';
@@ -1429,7 +1529,7 @@ function renderList(list){
       `<div class="rcard-img">${imgHtml}<div class="rcard-tag ${tagC}">${p.deal||''}</div>${selBadge}</div>`+
       `<div class="rcard-body">`+
         `<div class="rcard-top">`+
-          `<div class="rcard-type">${p.type||''}</div>`+
+          `<div class="rcard-type">${Array.isArray(p.type)?p.type.join(' · '):(p.type||'')}</div>`+
           `<div class="rcard-price">${fmtPrice(p.price)}${p.deal==='Affitto'?'<small> /mese</small>':''}</div>`+
           `<div class="rcard-title">${p.title||'(senza titolo)'}</div>`+
           `<div class="rcard-loc">📍 ${loc||'—'}</div>`+
@@ -1687,13 +1787,20 @@ function closePropModal(){
 }
 
 function clearPropForm(){
-  ['fTitle','fAgency','fNat','fCity2','fZone2','fAddr','fPrice','fSurf',
+  ['fTitle','fAgency','fNat','fCity2','fAddr','fPrice','fSurf',
    'fRoomsN','fBeds','fBaths','fGarage','fGarden','fDesc','fPrivNote'].forEach(id=>{
-    document.getElementById(id).value='';
+    const el = document.getElementById(id);
+    if(el) el.value='';
   });
   document.getElementById('fDealType').value='Vendita';
-  document.getElementById('fPropType').value='Appartamento';
   document.getElementById('fAgentSel').value='';
+  // Reset zone tags
+  formZones = [];
+  renderZoneTags();
+  document.getElementById('fZoneInput').value='';
+  // Reset type checkboxes
+  document.querySelectorAll('#fTypeList2 input').forEach(cb => cb.checked = false);
+  updateFormTypeLabel();
 }
 
 function fillPropForm(p){
@@ -1701,10 +1808,8 @@ function fillPropForm(p){
   document.getElementById('fAgency').value=p.agency||'';
   document.getElementById('fNat').value=p.nation||'';
   document.getElementById('fCity2').value=p.city||'';
-  document.getElementById('fZone2').value=p.zone||'';
   document.getElementById('fAddr').value=p.address||'';
   document.getElementById('fDealType').value=p.deal||'Vendita';
-  document.getElementById('fPropType').value=p.type||'Appartamento';
   document.getElementById('fPrice').value=p.price||'';
   document.getElementById('fSurf').value=p.surface||'';
   document.getElementById('fRoomsN').value=p.rooms||'';
@@ -1714,6 +1819,13 @@ function fillPropForm(p){
   document.getElementById('fGarden').value=p.garden||'';
   document.getElementById('fDesc').value=p.desc||'';
   document.getElementById('fPrivNote').value=p.privNote||'';
+  // Zone tags
+  document.getElementById('fZoneInput').value='';
+  formZones = Array.isArray(p.zone) ? [...p.zone] : (p.zone ? [p.zone] : []);
+  renderZoneTags();
+  // Type checkboxes
+  const types = Array.isArray(p.type) ? p.type : (p.type ? [p.type] : ['Appartamento']);
+  setFormTypes(types);
 }
 
 function buildFeatGrid(selected){
@@ -1747,10 +1859,10 @@ function saveProperty(){
     agency:document.getElementById('fAgency').value.trim(),
     nation:document.getElementById('fNat').value.trim(),
     city:document.getElementById('fCity2').value.trim(),
-    zone:document.getElementById('fZone2').value.trim(),
+    zone: formZones.length === 1 ? formZones[0] : (formZones.length > 1 ? formZones : ''),
     address:document.getElementById('fAddr').value.trim(),
     deal:document.getElementById('fDealType').value,
-    type:document.getElementById('fPropType').value,
+    type: (()=>{ const t=getFormTypes(); return t.length===1?t[0]:t.length>1?t:'Appartamento'; })(),
     price:parseFloat(document.getElementById('fPrice').value)||null,
     surface:parseFloat(document.getElementById('fSurf').value)||null,
     rooms:document.getElementById('fRoomsN').value.trim(),
@@ -2156,7 +2268,7 @@ function buildSelectionHtml(props){
   const cards = props.map(p=>{
     const firstImg = (p.media||[]).find(m=>m.mtype==='img');
     const imgUrl = firstImg ? (firstImg.url||firstImg.data||'') : '';
-    const loc = [p.zone, p.city, p.nation].filter(Boolean).join(' · ');
+    const zoneStr2 = Array.isArray(p.zone)?p.zone.join(" / "):p.zone; const loc = [zoneStr2, p.city, p.nation].filter(Boolean).join(' · ');
     const mapUrl = p.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}` : '';
     const feats = (p.features||[]).filter(Boolean);
     const infos = [
