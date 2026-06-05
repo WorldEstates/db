@@ -1252,7 +1252,7 @@ function showSaveStatus(msg, color){
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function fmtPrice(n){if(!n&&n!==0)return'—';return'€ '+Number(n).toLocaleString('it-IT')}
 function initials(name){if(!name)return'?';return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
-function sortAlpha(arr){return [...arr].sort((a,b)=>a.localeCompare(b,'it'))}
+function sortAlpha(arr){return [...arr].filter(x=>typeof x==='string').sort((a,b)=>a.localeCompare(b,'it'))}
 function roomsVal(v){
   if(!v)return null;
   const n=parseInt(v);
@@ -1392,11 +1392,17 @@ function syncZoneFilter(){
   const nat = document.getElementById('fNation').value;
   const selectedCities = getChecked('cityList');
   const selectedZones = getChecked('zoneList');
-  const zones = sortAlpha([...new Set(properties.filter(p=>{
+  // Expand zone arrays into flat list
+  const zoneSet = new Set();
+  properties.filter(p=>{
     if(nat && p.nation !== nat) return false;
     if(selectedCities.length && !selectedCities.includes(p.city)) return false;
     return true;
-  }).map(p=>p.zone).filter(Boolean))]);
+  }).forEach(p=>{
+    if(Array.isArray(p.zone)) p.zone.forEach(z=>z&&zoneSet.add(z));
+    else if(p.zone) zoneSet.add(p.zone);
+  });
+  const zones = sortAlpha([...zoneSet]);
   const list = document.getElementById('zoneList');
   if(!zones.length){
     list.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--muted)">Nessuna zona</div>';
