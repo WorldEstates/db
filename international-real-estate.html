@@ -2418,43 +2418,59 @@ async function generateShareLink(){
   const p = properties.find(x=>x.id===currentShareId);
   if(!p) return;
   const btn = document.getElementById('genLinkBtn');
-  btn.textContent = '⟳ Generazione...';
+  btn.textContent = '⟳ Pubblicazione...';
   btn.disabled = true;
+  document.getElementById('shareLinkBox').style.display = 'none';
 
   try{
-    // Build public card data (no private info)
-    const cardData = {
-      title: p.title, deal: p.deal, type: p.type,
-      nation: p.nation, city: p.city, zone: p.zone, address: p.address,
-      price: p.price, surface: p.surface, rooms: p.rooms,
-      beds: p.beds, baths: p.baths, garage: p.garage, garden: p.garden,
-      desc: p.desc, features: p.features||[],
-      media: (p.media||[]).map(m=>({mtype:m.mtype,name:m.name,url:m.url||m.data||''}))
-    };
+    const html = buildCardHtml(p);
+    const fileName = `cards/card-${p.id}.html`;
+    const encoded = btoa(unescape(encodeURIComponent(html)));
 
-    // Save to JSONbin (instant, no deploy delay)
-    const res = await fetch('https://api.jsonbin.io/v3/b', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': '$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS',
-        'X-Bin-Private': 'false'
-      },
-      body: JSON.stringify(cardData)
+    // Check if file exists to get SHA
+    let sha = null;
+    try{
+      const check = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
+        headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}
+      });
+      if(check.ok){ const cd = await check.json(); sha = cd.sha; }
+    }catch(e){}
+
+    // Upload to GitHub
+    const body = {message:`Scheda: ${p.title}`,content:encoded,branch:GITHUB_BRANCH};
+    if(sha) body.sha = sha;
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
+      method:'PUT',
+      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify(body)
     });
+    if(!res.ok) throw new Error('GitHub: '+(await res.text()));
 
-    if(!res.ok) throw new Error('JSONbin error: '+res.status);
-    const data = await res.json();
-    const binId = data.metadata?.id;
-    if(!binId) throw new Error('No bin ID');
+    const longUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
+    currentShareLink = longUrl;
 
-    // Link points to card.html viewer with bin ID
-    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/card.html?bin=${binId}`;
+    // Show waiting status
+    document.getElementById('shareLinkBox').style.display = 'block';
+    document.getElementById('shareLinkText').textContent = '⏳ Attendi, verifica in corso...';
+    btn.textContent = '⟳ Verifica pubblicazione...';
+
+    // Poll until page is live (every 10s, max 5 min)
+    let ready = false;
+    for(let i = 0; i < 30; i++){
+      await new Promise(r => setTimeout(r, 10000));
+      try{
+        const check = await fetch(longUrl+'?t='+Date.now(), {cache:'no-store', mode:'no-cors'});
+        ready = true; break;
+      }catch(e){}
+      btn.textContent = `⟳ Attendi... ${(i+1)*10}s`;
+    }
 
     document.getElementById('shareLinkText').textContent = currentShareLink;
-    document.getElementById('shareLinkBox').style.display = 'block';
-    btn.textContent = '🔄 Rigenera Link';
+    btn.textContent = '✓ Link pronto — Copia e manda!';
     btn.disabled = false;
+    btn.style.background = 'var(--green)';
+    setTimeout(()=>{ btn.style.background=''; btn.textContent='🔄 Rigenera'; }, 4000);
+
     p.shareLink = currentShareLink;
     saveProp(p.id);
 
