@@ -2418,43 +2418,51 @@ async function generateShareLink(){
   const p = properties.find(x=>x.id===currentShareId);
   if(!p) return;
   const btn = document.getElementById('genLinkBtn');
-  btn.textContent = '⟳ Pubblicazione...';
+  btn.textContent = '⟳ Generazione...';
   btn.disabled = true;
+
   try{
-    const html = buildCardHtml(p);
-    const fileName = `cards/card-${p.id}.html`;
-    const encoded = btoa(unescape(encodeURIComponent(html)));
-    // Check if file exists to get SHA
-    let sha = null;
-    try{
-      const check = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-        headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}
-      });
-      if(check.ok){ const cd = await check.json(); sha = cd.sha; }
-    }catch(e){}
-    // Upload to GitHub
-    const body = {message:`Scheda: ${p.title}`,content:encoded,branch:GITHUB_BRANCH};
-    if(sha) body.sha = sha;
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-      method:'PUT',
-      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify(body)
+    // Build public card data (no private info)
+    const cardData = {
+      title: p.title, deal: p.deal, type: p.type,
+      nation: p.nation, city: p.city, zone: p.zone, address: p.address,
+      price: p.price, surface: p.surface, rooms: p.rooms,
+      beds: p.beds, baths: p.baths, garage: p.garage, garden: p.garden,
+      desc: p.desc, features: p.features||[],
+      media: (p.media||[]).map(m=>({mtype:m.mtype,name:m.name,url:m.url||m.data||''}))
+    };
+
+    // Save to JSONbin (instant, no deploy delay)
+    const res = await fetch('https://api.jsonbin.io/v3/b', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': '$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS',
+        'X-Bin-Private': 'false'
+      },
+      body: JSON.stringify(cardData)
     });
-    if(!res.ok) throw new Error('GitHub: '+(await res.text()));
-    const longUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
-    // Use direct GitHub Pages link (TinyURL breaks Open Graph previews on WhatsApp)
-    currentShareLink = longUrl;
+
+    if(!res.ok) throw new Error('JSONbin error: '+res.status);
+    const data = await res.json();
+    const binId = data.metadata?.id;
+    if(!binId) throw new Error('No bin ID');
+
+    // Link points to GitHub viewer page with bin ID
+    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/international-real-estate.html?card=${binId}`;
+
     document.getElementById('shareLinkText').textContent = currentShareLink;
     document.getElementById('shareLinkBox').style.display = 'block';
     btn.textContent = '🔄 Rigenera Link';
     btn.disabled = false;
     p.shareLink = currentShareLink;
-    save();
+    saveProp(p.id);
+
   }catch(e){
     console.warn('Share error:', e);
     btn.textContent = '🔗 Genera Link Scheda';
     btn.disabled = false;
-    alert('Errore generazione link: '+e.message);
+    alert('Errore: '+e.message);
   }
 }
 
@@ -2641,28 +2649,28 @@ async function checkCardViewer(){
   const binId = params.get('card');
   if(!binId) return false;
 
-  // Show loading screen
+  // Show loading
   document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Jost',sans-serif;background:#F7F3EC;flex-direction:column;gap:1rem">
-    <div style="font-family:'Playfair Display',serif;font-size:24px;color:#0D1B2A">International Real Estate</div>
+    <div style="font-family:'Playfair Display',serif;font-size:24px;color:#0D1B2A">WorldEstates</div>
     <div style="color:#7A8899;font-size:14px">⟳ Caricamento scheda...</div>
   </div>`;
 
   try{
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-      headers:{'X-Master-Key': '$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS'}
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`,{
+      headers:{'X-Master-Key':'$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS'}
     });
+    if(!res.ok) throw new Error('Not found');
     const data = await res.json();
     const p = data.record;
     if(!p) throw new Error('No data');
 
-    // Build and show public card
-    const html = buildPublicCardFromData(p);
+    const html = buildCardHtml(p);
     document.open(); document.write(html); document.close();
   }catch(e){
     document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Jost',sans-serif;background:#F7F3EC;flex-direction:column;gap:1rem;text-align:center;padding:2rem">
       <div style="font-size:48px">⌂</div>
       <div style="font-family:'Playfair Display',serif;font-size:22px;color:#0D1B2A">Scheda non trovata</div>
-      <div style="color:#7A8899;font-size:14px">Il link potrebbe essere scaduto o non valido.</div>
+      <div style="color:#7A8899;font-size:14px">Il link potrebbe essere scaduto.</div>
       <a href="/" style="color:#C9A84C;font-weight:500;margin-top:1rem">← Torna al database</a>
     </div>`;
   }
