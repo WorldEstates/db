@@ -2446,30 +2446,29 @@ async function generateShareLink(){
     });
     if(!res.ok) throw new Error('GitHub: '+(await res.text()));
 
-    const longUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
-    currentShareLink = longUrl;
+    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
 
-    // Show waiting status
-    document.getElementById('shareLinkBox').style.display = 'block';
-    document.getElementById('shareLinkText').textContent = '⏳ Attendi, verifica in corso...';
-    btn.textContent = '⟳ Verifica pubblicazione...';
-
-    // Poll until page is live (every 10s, max 5 min)
-    let ready = false;
-    for(let i = 0; i < 30; i++){
-      await new Promise(r => setTimeout(r, 10000));
-      try{
-        const check = await fetch(longUrl+'?t='+Date.now(), {cache:'no-store', mode:'no-cors'});
-        ready = true; break;
-      }catch(e){}
-      btn.textContent = `⟳ Attendi... ${(i+1)*10}s`;
-    }
-
+    // Show link immediately with countdown timer
     document.getElementById('shareLinkText').textContent = currentShareLink;
-    btn.textContent = '✓ Link pronto — Copia e manda!';
-    btn.disabled = false;
-    btn.style.background = 'var(--green)';
-    setTimeout(()=>{ btn.style.background=''; btn.textContent='🔄 Rigenera'; }, 4000);
+    document.getElementById('shareLinkBox').style.display = 'block';
+
+    // Countdown 3 minutes
+    let secs = 180;
+    const interval = setInterval(()=>{
+      secs--;
+      if(secs <= 0){
+        clearInterval(interval);
+        btn.textContent = '✓ Pronto! Copia e manda';
+        btn.disabled = false;
+        btn.style.background = '#4CAF50';
+        btn.style.color = '#fff';
+        setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 5000);
+      } else {
+        const m = Math.floor(secs/60);
+        const s = secs%60;
+        btn.textContent = `⏳ Pronto tra ${m}:${s.toString().padStart(2,'0')}`;
+      }
+    }, 1000);
 
     p.shareLink = currentShareLink;
     saveProp(p.id);
