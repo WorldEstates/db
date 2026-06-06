@@ -2448,8 +2448,8 @@ async function generateShareLink(){
     const binId = data.metadata?.id;
     if(!binId) throw new Error('No bin ID');
 
-    // Link points to GitHub viewer page with bin ID
-    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/international-real-estate.html?card=${binId}`;
+    // Link points to card.html viewer with bin ID
+    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/card.html?bin=${binId}`;
 
     document.getElementById('shareLinkText').textContent = currentShareLink;
     document.getElementById('shareLinkBox').style.display = 'block';

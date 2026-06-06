@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorldEstates — Scheda Immobile</title>
+<!-- OG tags vengono aggiornati dinamicamente -->
+<meta id="ogTitle" property="og:title" content="WorldEstates — Scheda Immobile">
+<meta id="ogDesc" property="og:description" content="Visualizza la scheda completa">
+<meta id="ogImage" property="og:image" content="">
+<meta id="ogUrl" property="og:url" content="">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="WorldEstates">
+<meta name="twitter:card" content="summary_large_image">
+<meta id="twImage" name="twitter:image" content="">
+<meta id="twTitle" name="twitter:title" content="WorldEstates — Scheda Immobile">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}
+#loading{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:1rem}
+.brand{font-family:'Playfair Display',serif;font-size:26px;color:#0D1B2A}
+.sub{color:#7A8899;font-size:14px}
+.hdr{background:#0D1B2A;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+.hdr-brand{font-family:'Playfair Display',serif;font-size:20px;color:#C9A84C;letter-spacing:.06em}
+.hdr-brand small{display:block;color:rgba(255,255,255,.4);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.wrap{max-width:960px;margin:0 auto;padding:2rem 1.5rem 4rem}
+.tag{display:inline-block;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+.tag-v{background:rgba(42,122,74,.15);color:#2A7A4A}
+.tag-a{background:rgba(201,168,76,.2);color:#8A6E2F}
+.title{font-family:'Playfair Display',serif;font-size:clamp(22px,4vw,34px);font-weight:700;color:#0D1B2A;margin-bottom:4px;line-height:1.2}
+.loc{color:#7A8899;font-size:13px;margin-bottom:.5rem}
+.addr{font-size:13px;color:#4A5668;font-style:italic;margin-bottom:.5rem}
+.maplink{display:inline-flex;align-items:center;gap:6px;color:#8A6E2F;font-weight:500;text-decoration:none;font-size:13px;margin-bottom:1rem}
+.price{font-family:'Playfair Display',serif;font-size:clamp(26px,5vw,38px);font-weight:700;color:#8A6E2F;margin-bottom:1.5rem}
+.price small{font-family:'Jost',sans-serif;font-size:15px;font-weight:400;color:#7A8899}
+.main-img{width:100%;max-height:480px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block;cursor:pointer}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem}
+.thumbs img{width:90px;height:68px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border-color .15s}
+.thumbs img:hover,.thumbs img.active{border-color:#C9A84C}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:1.5rem}
+.icard{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:6px;padding:12px}
+.icard .l{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#7A8899;font-weight:600;margin-bottom:3px}
+.icard .v{font-weight:600;font-size:15px;color:#1A2433}
+.sec-t{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#0D1B2A;margin-bottom:.75rem;padding-bottom:6px;border-bottom:1px solid rgba(201,168,76,.2)}
+.feats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1.5rem}
+.feat{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:20px;padding:4px 14px;font-size:12px;font-weight:500}
+.desc{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:6px;padding:16px;line-height:1.8;margin-bottom:1.5rem;white-space:pre-wrap;font-size:14px}
+.foot{background:#0D1B2A;color:rgba(255,255,255,.4);font-size:12px;text-align:center;padding:20px;margin-top:3rem}
+#error{display:none;text-align:center;padding:4rem 2rem;flex-direction:column;align-items:center;gap:1rem}
+@media(max-width:600px){.grid{grid-template-columns:1fr 1fr}.thumbs img{width:72px;height:54px}}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="brand">WorldEstates</div>
+  <div class="sub">⟳ Caricamento scheda...</div>
+</div>
+
+<div id="error">
+  <div style="font-size:48px">⌂</div>
+  <div style="font-family:'Playfair Display',serif;font-size:22px;color:#0D1B2A">Scheda non trovata</div>
+  <div style="color:#7A8899;font-size:14px">Il link potrebbe essere scaduto.</div>
+</div>
+
+<div id="cardContent" style="display:none">
+  <div class="hdr">
+    <div class="hdr-brand">WorldEstates<small>Property Details</small></div>
+  </div>
+  <div class="wrap" id="cardWrap"></div>
+  <div class="foot" id="cardFoot"></div>
+</div>
+
+<script>
+const JSONBIN_KEY = '$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS';
+
+function fmtPrice(n){ return n ? '€ '+Number(n).toLocaleString('it-IT') : '—'; }
+
+async function loadCard(){
+  const params = new URLSearchParams(window.location.search);
+  const binId = params.get('bin');
+  if(!binId){ showError(); return; }
+
+  try{
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`,{
+      headers:{'X-Master-Key': JSONBIN_KEY}
+    });
+    if(!res.ok) throw new Error('Not found');
+    const data = await res.json();
+    const p = data.record;
+    if(!p) throw new Error('No data');
+    renderCard(p);
+  }catch(e){
+    showError();
+  }
+}
+
+function showError(){
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('error').style.display = 'flex';
+}
+
+function renderCard(p){
+  const loc = [Array.isArray(p.zone)?p.zone.join(' / '):p.zone, p.city, p.nation].filter(Boolean).join(' · ');
+  const typeStr = Array.isArray(p.type)?p.type.join(' / '):(p.type||'');
+  const media = p.media||[];
+  const firstImg = media.find(m=>m.mtype==='img');
+  const imgUrl = firstImg ? (firstImg.url||'') : '';
+  const priceStr = fmtPrice(p.price) + (p.deal==='Affitto'?' /mese':'');
+  const mapUrl = p.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address+', '+p.city)}` : '';
+  const feats = (p.features||[]).filter(Boolean);
+  const infos = [
+    ['Tipologia',typeStr],['Superficie',p.surface?p.surface+' m²':null],
+    ['Locali',p.rooms],['Camere',p.beds],['Bagni',p.baths],
+    ['Garage',p.garage],['Giardino',p.garden]
+  ].filter(([,v])=>v);
+
+  const imgs = media.filter(m=>m.mtype==='img');
+
+  document.getElementById('cardWrap').innerHTML = `
+    <div class="tag ${p.deal==='Affitto'?'tag-a':'tag-v'}" style="margin-top:1.5rem">${p.deal||'Vendita'}</div>
+    <div class="title">${p.title||'Immobile'}</div>
+    <div class="loc">📍 ${loc||'—'}</div>
+    ${p.address?`<div class="addr">🏠 ${p.address}</div>`:''}
+    ${mapUrl?`<a class="maplink" href="${mapUrl}" target="_blank">🗺 Vedi su Google Maps</a>`:''}
+    <div class="price">${priceStr}</div>
+    ${imgUrl?`<img class="main-img" id="mainImg" src="${imgUrl}" alt="" onclick="openImg(this.src)">`:''}
+    ${imgs.length>1?`<div class="thumbs">${imgs.map((m,i)=>`<img src="${m.url}" class="${i===0?'active':''}" onclick="switchImg('${m.url}',this)">`).join('')}</div>`:''}
+    ${infos.length?`<div class="grid">${infos.map(([l,v])=>`<div class="icard"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('')}</div>`:''}
+    ${feats.length?`<div class="sec-t">Caratteristiche</div><div class="feats">${feats.map(f=>`<span class="feat">✓ ${f}</span>`).join('')}</div>`:''}
+    ${p.desc?`<div class="sec-t">Descrizione</div><div class="desc">${p.desc}</div>`:''}
+  `;
+
+  document.getElementById('cardFoot').textContent = `WorldEstates — ${new Date().toLocaleDateString('it-IT')}`;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('cardContent').style.display = 'block';
+  document.title = `${p.title||'Immobile'} — WorldEstates`;
+}
+
+function switchImg(url, el){
+  document.getElementById('mainImg').src = url;
+  document.querySelectorAll('.thumbs img').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function openImg(src){
+  window.open(src,'_blank');
+}
+
+loadCard();
+</script>
+</body>
+</html>
