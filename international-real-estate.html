@@ -2221,6 +2221,14 @@ async function doGenerateSelLink(){
   btn.disabled = true;
 
   const selProps = selectedForShare.map(id=>properties.find(x=>x.id===id)).filter(Boolean);
+  // Make sure EVERY selected property has its own published card first, so that
+  // all "Vedi scheda completa" links appear in the selection (not just the first).
+  for(const sp of selProps){
+    if(!sp.shareLink){
+      try{ sp.shareLink = await publishCard(sp); saveProp(sp.id); }
+      catch(e){ console.warn('card publish failed for', sp.id, e); }
+    }
+  }
   const html = buildSelectionHtml(selProps);
   const fileName = `selections/sel-${Date.now()}.html`;
   const encoded = btoa(unescape(encodeURIComponent(html)));
@@ -2414,6 +2422,57 @@ ${p.desc?`<div class="sec-t">Descrizione</div><div class="desc">${p.desc}</div>`
 </body></html>`;
 }
 
+// Poll a just-published URL until GitHub Pages actually serves it (HTTP 200).
+// Prevents handing out links that still 404 because the deploy isn't finished.
+async function waitUntilLive(url, btn){
+  for(let i=0;i<48;i++){            // up to ~4 minutes
+    try{ const r = await fetch(url+'?_t='+Date.now(), {cache:'no-store'}); if(r.ok) return true; }catch(e){}
+    if(btn) btn.textContent = '\u23F3 Pubblicazione in corso\u2026 '+(i*5)+'s';
+    await new Promise(r=>setTimeout(r, 5000));
+  }
+  return false;
+}
+
+// Commit a single property's public card to GitHub and return its public URL.
+async function publishCard(p){
+  const html = buildCardHtml(p);
+  const fileName = `cards/card-${p.id}.html`;
+  const encoded = btoa(unescape(encodeURIComponent(html)));
+  let sha = null;
+  try{
+    const check = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
+      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}
+    });
+    if(check.ok){ const cd = await check.json(); sha = cd.sha; }
+  }catch(e){}
+  const body = {message:`Scheda: ${p.title}`, content:encoded, branch:GITHUB_BRANCH};
+  if(sha) body.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
+    method:'PUT',
+    headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error('GitHub: '+(await res.text()));
+  return `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
+}
+
+// Ensure the repo has a .nojekyll file, so GitHub Pages serves the many card
+// files as plain static files instead of running Jekyll (which was making the
+// Pages deploy fail/time out -> that is what caused shared links to 404).
+async function ensureNoJekyll(){
+  try{
+    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/.nojekyll`;
+    const check = await fetch(url, {headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}});
+    if(check.ok) return;             // already present
+    if(check.status !== 404) return; // don't act on other errors (e.g. rate limit)
+    await fetch(url, {
+      method:'PUT',
+      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify({message:'Add .nojekyll (fix GitHub Pages deploy)', content:'', branch:GITHUB_BRANCH})
+    });
+  }catch(e){ console.warn('ensureNoJekyll failed', e); }
+}
+
 async function generateShareLink(){
   const p = properties.find(x=>x.id===currentShareId);
   if(!p) return;
@@ -2448,30 +2507,25 @@ async function generateShareLink(){
 
     currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
 
-    // Show link immediately with countdown timer
+    // Show link, then verify it is actually online before marking it ready.
     document.getElementById('shareLinkText').textContent = currentShareLink;
     document.getElementById('shareLinkBox').style.display = 'block';
 
-    // Countdown 3 minutes
-    let secs = 180;
-    const interval = setInterval(()=>{
-      secs--;
-      if(secs <= 0){
-        clearInterval(interval);
-        btn.textContent = '✓ Pronto! Copia e manda';
-        btn.disabled = false;
-        btn.style.background = '#4CAF50';
-        btn.style.color = '#fff';
-        setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 5000);
-      } else {
-        const m = Math.floor(secs/60);
-        const s = secs%60;
-        btn.textContent = `⏳ Pronto tra ${m}:${s.toString().padStart(2,'0')}`;
-      }
-    }, 1000);
-
     p.shareLink = currentShareLink;
     saveProp(p.id);
+
+    // Poll the public URL until GitHub Pages has really published it.
+    const live = await waitUntilLive(currentShareLink, btn);
+    if(live){
+      btn.textContent = '✓ Link attivo! Copia e manda';
+      btn.disabled = false;
+      btn.style.background = '#4CAF50';
+      btn.style.color = '#fff';
+      setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
+    } else {
+      btn.textContent = '⚠️ Non ancora online — riprova tra poco';
+      btn.disabled = false;
+    }
 
   }catch(e){
     console.warn('Share error:', e);
@@ -2765,6 +2819,7 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433;font-size:15
   try{ await initFirebase(); }catch(e){ console.warn('Firebase init error:', e); }
   try{ await load(); }catch(e){ console.warn('Load error:', e); }
   refreshAll();
+  ensureNoJekyll(); // one-time: fixes GitHub Pages deploy so shared links stop 404-ing
 })();
 </script>
 </body>
