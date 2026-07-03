@@ -2229,6 +2229,7 @@ async function doGenerateSelLink(){
       catch(e){ console.warn('card publish failed for', sp.id, e); }
     }
   }
+  if(selProps[0]) await ensureMainImageUrl(selProps[0]);
   const html = buildSelectionHtml(selProps);
   const fileName = `selections/sel-${Date.now()}.html`;
   const encoded = btoa(unescape(encodeURIComponent(html)));
@@ -2244,9 +2245,20 @@ async function doGenerateSelLink(){
     const selLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
     document.getElementById('selLinkText').textContent = selLink;
     document.getElementById('selLinkBox').style.display = 'block';
-    btn.textContent = '🔄 Rigenera';
-    btn.disabled = false;
     window._currentSelLink = selLink;
+
+    // Wait until the selection page is really online before marking it ready (same as the single link).
+    const live = await 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(selLink, btn);
+    if(live){
+      btn.textContent = '✓ Link attivo!';
+      btn.disabled = false;
+      btn.style.background = '#4CAF50';
+      btn.style.color = '#fff';
+      setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
+    } else {
+      btn.textContent = '⚠️ Non ancora online — riprova tra poco';
+      btn.disabled = false;
+    }
   }catch(e){
     btn.textContent = '🔗 Pubblica e Genera Link';
     btn.disabled = false;
@@ -2310,7 +2322,7 @@ function buildSelectionHtml(props){
   }).join('');
 
   const firstImg = props[0] && (props[0].media||[]).find(m=>m.mtype==='img');
-  const ogImg = firstImg ? (firstImg.url||firstImg.data||'') : '';
+  const ogImg = firstImg ? ogImageUrl(firstImg.url||firstImg.data||'') : '';
 
   return `<!DOCTYPE html>
 <html lang="it"><head>
@@ -2370,7 +2382,7 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}
 </body></html>`;
 }
 // ════════════════════════════════════════════════════════
-const GITHUB_TOKEN = ['ghp_XgVuChaJQYNpbIIQk51U6n', 'rQBwO5RO49KjDZ'].join('');
+const GITHUB_TOKEN = "INCOLLA_QUI_IL_TOKEN";  // <-- sostituisci INCOLLA_QUI_IL_TOKEN con il tuo nuovo token GitHub (tra le virgolette)
 const GITHUB_OWNER = 'WorldEstates';
 const GITHUB_REPO = 'db';
 const GITHUB_BRANCH = 'main';
@@ -2398,10 +2410,10 @@ function buildCardHtml(p){
 <meta property="og:title" content="${p.title||'Immobile'}">
 <meta property="og:description" content="${priceStr} · ${loc}">
 <meta property="og:type" content="website">
-${imgUrl?`<meta property="og:image" content="${imgUrl}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">`:''}
+${imgUrl?`<meta property="og:image" content="${ogImageUrl(imgUrl)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">`:''}
 <meta property="og:site_name" content="International Real Estate">
 <meta name="twitter:card" content="summary_large_image">
-${imgUrl?`<meta name="twitter:image" content="${imgUrl}">`:''}
+${imgUrl?`<meta name="twitter:image" content="${ogImageUrl(imgUrl)}">`:''}
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}.hdr{background:#0D1B2A;padding:16px 24px}.hdr-brand{font-family:'Playfair Display',serif;font-size:18px;color:#C9A84C;letter-spacing:.06em}.hdr-brand small{display:block;color:rgba(255,255,255,.4);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase}.wrap{max-width:900px;margin:0 auto;padding:2rem 1.5rem 4rem}.tag{display:inline-block;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}.tag-v{background:rgba(42,122,74,.15);color:#2A7A4A}.tag-a{background:rgba(201,168,76,.2);color:#8A6E2F}.title{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#0D1B2A;margin-bottom:4px}.loc{color:#7A8899;font-size:13px;margin-bottom:.5rem}.price{font-family:'Playfair Display',serif;font-size:32px;font-weight:700;color:#8A6E2F;margin-bottom:1.5rem}.main-img{width:100%;max-height:440px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block}.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1.5rem}.thumbs img{width:88px;height:66px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border-color .15s}.thumbs img:hover,.thumbs img.active{border-color:#C9A84C}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:1.5rem}.icard{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:6px;padding:12px}.icard .l{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#7A8899;font-weight:600;margin-bottom:3px}.icard .v{font-weight:600;font-size:15px;color:#1A2433}.feats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1.5rem}.feat{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:20px;padding:4px 14px;font-size:12px;font-weight:500}.desc{background:#fff;border:1px solid rgba(201,168,76,.2);border-radius:6px;padding:16px;line-height:1.8;margin-bottom:1.5rem;white-space:pre-wrap;font-size:14px}.sec-t{font-family:'Playfair Display',serif;font-size:18px;font-weight:600;color:#0D1B2A;margin-bottom:.75rem;padding-bottom:6px;border-bottom:1px solid rgba(201,168,76,.2)}.maplink{display:inline-flex;align-items:center;gap:6px;color:#8A6E2F;font-weight:500;text-decoration:none;font-size:13px;margin-bottom:1.5rem}.foot{background:#0D1B2A;color:rgba(255,255,255,.4);font-size:12px;text-align:center;padding:20px;margin-top:3rem}@media(max-width:600px){.title{font-size:20px}.price{font-size:24px}.grid{grid-template-columns:1fr 1fr}}</style>
 </head><body>
@@ -2424,7 +2436,7 @@ ${p.desc?`<div class="sec-t">Descrizione</div><div class="desc">${p.desc}</div>`
 
 // Poll a just-published URL until GitHub Pages actually serves it (HTTP 200).
 // Prevents handing out links that still 404 because the deploy isn't finished.
-async function waitUntilLive(url, btn){
+async function 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(url, btn){
   for(let i=0;i<48;i++){            // up to ~4 minutes
     try{ const r = await fetch(url+'?_t='+Date.now(), {cache:'no-store'}); if(r.ok) return true; }catch(e){}
     if(btn) btn.textContent = '\u23F3 Pubblicazione in corso\u2026 '+(i*5)+'s';
@@ -2434,7 +2446,44 @@ async function waitUntilLive(url, btn){
 }
 
 // Commit a single property's public card to GitHub and return its public URL.
+// Return a WhatsApp/Facebook-friendly preview version of an image URL.
+// For Cloudinary images, force a 1200x630 JPG so the social preview always renders.
+function ogImageUrl(url){
+  if(url && url.indexOf('res.cloudinary.com')!==-1 && url.indexOf('/upload/')!==-1){
+    return url.replace('/upload/','/upload/w_1200,h_630,c_fill,q_auto,f_jpg/');
+  }
+  return url;
+}
+
+// Upload a base64 data-URL image to Cloudinary and return its public https URL.
+async function uploadDataUrlToCloudinary(dataUrl){
+  const fd = new FormData();
+  fd.append('file', dataUrl);
+  fd.append('upload_preset', CLOUDINARY_PRESET);
+  fd.append('folder', 'worldestates');
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, {method:'POST', body:fd});
+  if(!res.ok) throw new Error('Cloudinary upload failed');
+  const d = await res.json();
+  return d.secure_url;
+}
+
+// Make sure the main photo has a real https URL (needed for the WhatsApp/social
+// link preview). If it is only embedded (base64), upload it once and remember it.
+async function ensureMainImageUrl(p){
+  try{
+    const firstImg = (p.media||[]).find(m=>m.mtype==='img');
+    if(!firstImg) return;
+    if(firstImg.url && /^https?:\/\//.test(firstImg.url)) return;   // already hosted
+    if(firstImg.data && firstImg.data.indexOf('data:')===0){
+      const url = await uploadDataUrlToCloudinary(firstImg.data);
+      firstImg.url = url;
+      saveProp(p.id);   // persist so it is ready next time too
+    }
+  }catch(e){ console.warn('ensureMainImageUrl failed', e); }
+}
+
 async function publishCard(p){
+  await ensureMainImageUrl(p);
   const html = buildCardHtml(p);
   const fileName = `cards/card-${p.id}.html`;
   const encoded = btoa(unescape(encodeURIComponent(html)));
@@ -2482,6 +2531,7 @@ async function generateShareLink(){
   document.getElementById('shareLinkBox').style.display = 'none';
 
   try{
+    await ensureMainImageUrl(p);
     const html = buildCardHtml(p);
     const fileName = `cards/card-${p.id}.html`;
     const encoded = btoa(unescape(encodeURIComponent(html)));
@@ -2515,7 +2565,7 @@ async function generateShareLink(){
     saveProp(p.id);
 
     // Poll the public URL until GitHub Pages has really published it.
-    const live = await waitUntilLive(currentShareLink, btn);
+    const live = await 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(currentShareLink, btn);
     if(live){
       btn.textContent = '✓ Link attivo! Copia e manda';
       btn.disabled = false;
@@ -2725,9 +2775,8 @@ async function checkCardViewer(){
   </div>`;
 
   try{
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`,{
-      headers:{'X-Master-Key':'$2a$10$skPwjZ.Uh.DzntTLeMbKNuob1VhHwEA.qxZHvU8DMtn17hk4OgEwS'}
-    });
+    // Chiave jsonbin rimossa per sicurezza: gli eventuali bin pubblici si leggono senza autenticazione.
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`);
     if(!res.ok) throw new Error('Not found');
     const data = await res.json();
     const p = data.record;
