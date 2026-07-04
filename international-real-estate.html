@@ -2809,15 +2809,25 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433;font-size:15
 </body></html>`;
 }
 (async function(){
-  // Check if opening a shared card link (?card=binId)
+  // Se si apre un link di scheda (?card=) o selezione (?sel=), mostra SOLO quella: nessuna password.
   const isViewer = await checkCardViewer();
   if(isViewer) return;
 
-  // Normal app init
+  // Altrimenti è il database completo: protetto da password.
   try{ await initFirebase(); }catch(e){ console.warn('Firebase init error:', e); }
-  try{ await load(); }catch(e){ console.warn('Load error:', e); }
-  refreshAll();
 
+  async function enterApp(){
+    isAuthenticated = true;
+    try{ localStorage.setItem('ire_auth','ok'); }catch(e){}
+    try{ await load(); }catch(e){ console.warn('Load error:', e); }
+    refreshAll();
+  }
+
+  // Sul TUO dispositivo la password si ricorda; su altri dispositivi viene richiesta.
+  let already = false;
+  try{ already = localStorage.getItem('ire_auth') === 'ok'; }catch(e){}
+  if(already){ enterApp(); }
+  else { requirePassword('Inserisci la password per accedere al database', enterApp); }
 })();
 </script>
 </body>
