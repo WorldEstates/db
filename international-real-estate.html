@@ -2221,44 +2221,30 @@ async function doGenerateSelLink(){
   btn.disabled = true;
 
   const selProps = selectedForShare.map(id=>properties.find(x=>x.id===id)).filter(Boolean);
-  // Make sure EVERY selected property has its own published card first, so that
-  // all "Vedi scheda completa" links appear in the selection (not just the first).
+  // Publish each selected property's card first, so every "Vedi scheda completa" link works.
   for(const sp of selProps){
     if(!sp.shareLink){
       try{ sp.shareLink = await publishCard(sp); saveProp(sp.id); }
       catch(e){ console.warn('card publish failed for', sp.id, e); }
     }
   }
-  if(selProps[0]) await ensureMainImageUrl(selProps[0]);
-  const html = buildSelectionHtml(selProps);
-  const fileName = `selections/sel-${Date.now()}.html`;
-  const encoded = btoa(unescape(encodeURIComponent(html)));
 
   try{
-    const body = {message:`Selezione ${selProps.length} immobili`, content:encoded, branch:GITHUB_BRANCH};
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-      method:'PUT',
-      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    if(!res.ok) throw new Error(await res.text());
-    const selLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
+    if(!db) throw new Error('Database non ancora pronto — riprova tra un secondo');
+    const selId = 'sel_' + Date.now();
+    const props = selProps.map(sp => { const d = cardData(sp); d.shareLink = sp.shareLink || ''; return d; });
+    await db.collection('shared_sel').doc(selId).set({ props, createdAt: Date.now() });
+    const selLink = shareBase() + '?sel=' + encodeURIComponent(selId);
+
     document.getElementById('selLinkText').textContent = selLink;
     document.getElementById('selLinkBox').style.display = 'block';
     window._currentSelLink = selLink;
 
-    // Wait until the selection page is really online before marking it ready (same as the single link).
-    const live = await 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(selLink, btn);
-    if(live){
-      btn.textContent = '✓ Link attivo!';
-      btn.disabled = false;
-      btn.style.background = '#4CAF50';
-      btn.style.color = '#fff';
-      setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
-    } else {
-      btn.textContent = '⚠️ Non ancora online — riprova tra poco';
-      btn.disabled = false;
-    }
+    btn.textContent = '✓ Link attivo!';
+    btn.disabled = false;
+    btn.style.background = '#4CAF50';
+    btn.style.color = '#fff';
+    setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
   }catch(e){
     btn.textContent = '🔗 Pubblica e Genera Link';
     btn.disabled = false;
@@ -2382,10 +2368,32 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433}
 </body></html>`;
 }
 // ════════════════════════════════════════════════════════
-const GITHUB_TOKEN = "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";  // <-- sostituisci INCOLLA_QUI_IL_TOKEN con il tuo nuovo token GitHub (tra le virgolette)
-const GITHUB_OWNER = 'WorldEstates';
-const GITHUB_REPO = 'db';
-const GITHUB_BRANCH = 'main';
+// ── CONDIVISIONE VIA FIREBASE (nessun token, nessun servizio esterno) ──────
+// Le schede condivise vengono salvate su Firebase (che usi già) e aperte con un
+// link ...?card=ID . Il link funziona sempre: niente token da revocare, niente 404.
+function shareBase(){ return location.origin + location.pathname; }
+
+// Dati pubblici della scheda (esclude SEMPRE note riservate e nome agenzia).
+function cardData(p){
+  const media = (p.media||[]).filter(m => m && m.url && /^https?:\/\//.test(m.url))
+    .map(m => ({ id:m.id||'', mtype:m.mtype||'img', name:m.name||'', url:m.url }));
+  return {
+    id:p.id, title:p.title||'', deal:p.deal||'', type:(p.type||''),
+    nation:p.nation||'', city:p.city||'', zone:(p.zone||''), address:p.address||'',
+    price:(p.price!=null?p.price:null), surface:(p.surface!=null?p.surface:null),
+    rooms:p.rooms||'', beds:p.beds||'', baths:p.baths||'', garage:p.garage||'', garden:p.garden||'',
+    desc:p.desc||'', features:(p.features||[]).filter(Boolean), media,
+    shareLink:p.shareLink||''
+  };
+}
+
+// Salva una scheda su Firebase e restituisce il link pubblico (?card=ID).
+async function saveSharedCard(p){
+  if(!db) throw new Error('Database non ancora pronto — riprova tra un secondo');
+  try{ await ensureMainImageUrl(p); }catch(e){}
+  await db.collection('shared').doc(p.id).set(cardData(p));
+  return shareBase() + '?card=' + encodeURIComponent(p.id);
+}
 let currentShareLink = '';
 
 function buildCardHtml(p){
@@ -2436,7 +2444,7 @@ ${p.desc?`<div class="sec-t">Descrizione</div><div class="desc">${p.desc}</div>`
 
 // Poll a just-published URL until GitHub Pages actually serves it (HTTP 200).
 // Prevents handing out links that still 404 because the deploy isn't finished.
-async function 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(url, btn){
+async function waitUntilLive(url, btn){
   for(let i=0;i<48;i++){            // up to ~4 minutes
     try{ const r = await fetch(url+'?_t='+Date.now(), {cache:'no-store'}); if(r.ok) return true; }catch(e){}
     if(btn) btn.textContent = '\u23F3 Pubblicazione in corso\u2026 '+(i*5)+'s';
@@ -2483,44 +2491,11 @@ async function ensureMainImageUrl(p){
 }
 
 async function publishCard(p){
-  await ensureMainImageUrl(p);
-  const html = buildCardHtml(p);
-  const fileName = `cards/card-${p.id}.html`;
-  const encoded = btoa(unescape(encodeURIComponent(html)));
-  let sha = null;
-  try{
-    const check = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}
-    });
-    if(check.ok){ const cd = await check.json(); sha = cd.sha; }
-  }catch(e){}
-  const body = {message:`Scheda: ${p.title}`, content:encoded, branch:GITHUB_BRANCH};
-  if(sha) body.sha = sha;
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-    method:'PUT',
-    headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-    body:JSON.stringify(body)
-  });
-  if(!res.ok) throw new Error('GitHub: '+(await res.text()));
-  return `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
+  return await saveSharedCard(p);
 }
 
-// Ensure the repo has a .nojekyll file, so GitHub Pages serves the many card
-// files as plain static files instead of running Jekyll (which was making the
-// Pages deploy fail/time out -> that is what caused shared links to 404).
-async function ensureNoJekyll(){
-  try{
-    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/.nojekyll`;
-    const check = await fetch(url, {headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}});
-    if(check.ok) return;             // already present
-    if(check.status !== 404) return; // don't act on other errors (e.g. rate limit)
-    await fetch(url, {
-      method:'PUT',
-      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify({message:'Add .nojekyll (fix GitHub Pages deploy)', content:'', branch:GITHUB_BRANCH})
-    });
-  }catch(e){ console.warn('ensureNoJekyll failed', e); }
-}
+// (La funzione .nojekyll non serve più: il file è già presente nel repository.)
+
 
 async function generateShareLink(){
   const p = properties.find(x=>x.id===currentShareId);
@@ -2531,51 +2506,19 @@ async function generateShareLink(){
   document.getElementById('shareLinkBox').style.display = 'none';
 
   try{
-    await ensureMainImageUrl(p);
-    const html = buildCardHtml(p);
-    const fileName = `cards/card-${p.id}.html`;
-    const encoded = btoa(unescape(encodeURIComponent(html)));
+    currentShareLink = await saveSharedCard(p);
 
-    // Check if file exists to get SHA
-    let sha = null;
-    try{
-      const check = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-        headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json'}
-      });
-      if(check.ok){ const cd = await check.json(); sha = cd.sha; }
-    }catch(e){}
-
-    // Upload to GitHub
-    const body = {message:`Scheda: ${p.title}`,content:encoded,branch:GITHUB_BRANCH};
-    if(sha) body.sha = sha;
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${fileName}`,{
-      method:'PUT',
-      headers:{'Authorization':'token '+GITHUB_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    if(!res.ok) throw new Error('GitHub: '+(await res.text()));
-
-    currentShareLink = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${fileName}`;
-
-    // Show link, then verify it is actually online before marking it ready.
     document.getElementById('shareLinkText').textContent = currentShareLink;
     document.getElementById('shareLinkBox').style.display = 'block';
 
     p.shareLink = currentShareLink;
     saveProp(p.id);
 
-    // Poll the public URL until GitHub Pages has really published it.
-    const live = await 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(currentShareLink, btn);
-    if(live){
-      btn.textContent = '✓ Link attivo! Copia e manda';
-      btn.disabled = false;
-      btn.style.background = '#4CAF50';
-      btn.style.color = '#fff';
-      setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
-    } else {
-      btn.textContent = '⚠️ Non ancora online — riprova tra poco';
-      btn.disabled = false;
-    }
+    btn.textContent = '✓ Link attivo! Copia e manda';
+    btn.disabled = false;
+    btn.style.background = '#4CAF50';
+    btn.style.color = '#fff';
+    setTimeout(()=>{ btn.style.background=''; btn.style.color=''; btn.textContent='🔄 Rigenera'; }, 6000);
 
   }catch(e){
     console.warn('Share error:', e);
@@ -2765,24 +2708,30 @@ window.addEventListener('orientationchange',()=>{
 // ════════════════════════════════════════════════════════
 async function checkCardViewer(){
   const params = new URLSearchParams(window.location.search);
-  const binId = params.get('card');
-  if(!binId) return false;
+  const cardId = params.get('card');
+  const selId  = params.get('sel');
+  if(!cardId && !selId) return false;
 
   // Show loading
   document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Jost',sans-serif;background:#F7F3EC;flex-direction:column;gap:1rem">
     <div style="font-family:'Playfair Display',serif;font-size:24px;color:#0D1B2A">WorldEstates</div>
-    <div style="color:#7A8899;font-size:14px">⟳ Caricamento scheda...</div>
+    <div style="color:#7A8899;font-size:14px">⟳ Caricamento...</div>
   </div>`;
 
   try{
-    // Chiave jsonbin rimossa per sicurezza: gli eventuali bin pubblici si leggono senza autenticazione.
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`);
-    if(!res.ok) throw new Error('Not found');
-    const data = await res.json();
-    const p = data.record;
-    if(!p) throw new Error('No data');
+    try{ await initFirebase(); }catch(e){}
+    if(!db) throw new Error('DB non pronto');
 
-    const html = buildCardHtml(p);
+    let html;
+    if(cardId){
+      const snap = await db.collection('shared').doc(cardId).get();
+      if(!snap.exists) throw new Error('Not found');
+      html = buildCardHtml(snap.data());
+    } else {
+      const snap = await db.collection('shared_sel').doc(selId).get();
+      if(!snap.exists) throw new Error('Not found');
+      html = buildSelectionHtml((snap.data()||{}).props || []);
+    }
     document.open(); document.write(html); document.close();
   }catch(e){
     document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Jost',sans-serif;background:#F7F3EC;flex-direction:column;gap:1rem;text-align:center;padding:2rem">
@@ -2868,7 +2817,7 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433;font-size:15
   try{ await initFirebase(); }catch(e){ console.warn('Firebase init error:', e); }
   try{ await load(); }catch(e){ console.warn('Load error:', e); }
   refreshAll();
-  ensureNoJekyll(); // one-time: fixes GitHub Pages deploy so shared links stop 404-ing
+
 })();
 </script>
 </body>
