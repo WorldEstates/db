@@ -915,6 +915,22 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     MODAL: LOGIN (Firebase Authentication)
+══════════════════════════════════════════════════════ -->
+<div class="pw-modal" id="loginModal">
+  <div class="pw-box">
+    <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--gold);margin-bottom:.25rem">WorldEstates</div>
+    <div style="font-size:34px;margin-bottom:.5rem">🔐</div>
+    <h3>Accesso Riservato</h3>
+    <p>Accedi con le tue credenziali per entrare nel database</p>
+    <input type="email" id="loginEmail" placeholder="La tua email" autocomplete="username" style="width:100%;padding:10px 12px;font-size:15px;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);text-align:left">
+    <input type="password" id="loginPw" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:10px 12px;font-size:15px;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);text-align:left">
+    <div class="pw-error" id="loginError"></div>
+    <button class="btn btn-gold" id="loginBtn" style="width:100%;padding:11px" onclick="doLogin()">Accedi</button>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════
 // STATE
@@ -984,13 +1000,15 @@ const firebaseConfig = {
 // Load Firebase SDK dynamically
 let db = null;
 let storage = null;
+let auth = null;
 
 async function initFirebase(){
   return new Promise((resolve) => {
-    // Load scripts sequentially (firestore depends on app)
+    // Load scripts sequentially (firestore + auth depend on app)
     const scripts = [
       'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
-      'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js'
+      'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
+      'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js'
     ];
 
     function loadNext(i){
@@ -998,10 +1016,9 @@ async function initFirebase(){
         try{
           firebase.initializeApp(firebaseConfig);
           db = firebase.firestore();
-          // Test connection
-          db.collection('ire').doc('settings').get()
-            .then(()=>{ console.log('Firebase OK'); resolve(); })
-            .catch(e=>{ console.warn('Firebase test failed:', e); resolve(); });
+          try{ auth = firebase.auth(); }catch(e){ console.warn('Auth init failed:', e); }
+          console.log('Firebase OK');
+          resolve();
         }catch(e){
           console.warn('Firebase init failed:', e);
           resolve();
@@ -2809,26 +2826,69 @@ body{font-family:'Jost',sans-serif;background:#F7F3EC;color:#1A2433;font-size:15
 </body></html>`;
 }
 (async function(){
-  // Se si apre un link di scheda (?card=) o selezione (?sel=), mostra SOLO quella: nessuna password.
+  // Se si apre un link di scheda (?card=) o selezione (?sel=), mostra SOLO quella: nessun login.
   const isViewer = await checkCardViewer();
   if(isViewer) return;
 
-  // Altrimenti è il database completo: protetto da password.
+  // Altrimenti è il database completo: accessibile solo dopo LOGIN (Firebase Authentication).
   try{ await initFirebase(); }catch(e){ console.warn('Firebase init error:', e); }
-
-  async function enterApp(){
-    isAuthenticated = true;
-    try{ localStorage.setItem('ire_auth','ok'); }catch(e){}
-    try{ await load(); }catch(e){ console.warn('Load error:', e); }
-    refreshAll();
-  }
-
-  // Sul TUO dispositivo la password si ricorda; su altri dispositivi viene richiesta.
-  let already = false;
-  try{ already = localStorage.getItem('ire_auth') === 'ok'; }catch(e){}
-  if(already){ enterApp(); }
-  else { requirePassword('Inserisci la password per accedere al database', enterApp); }
+  startLoginFlow();
 })();
+
+// ── LOGIN (Firebase Authentication) ────────────────────────────────────────
+async function enterApp(){
+  isAuthenticated = true;               // sblocca anche i pulsanti Modifica/Elimina
+  hideLogin();
+  try{ await load(); }catch(e){ console.warn('Load error:', e); }
+  refreshAll();
+}
+
+function startLoginFlow(){
+  if(!auth){ showLogin('Autenticazione non disponibile. Ricarica la pagina.'); return; }
+  auth.onAuthStateChanged(user => {
+    if(user){ enterApp(); }   // già loggato (Firebase ricorda la sessione su questo dispositivo)
+    else { showLogin(); }
+  });
+}
+
+function showLogin(msg){
+  const ov = document.getElementById('loginModal');
+  if(ov) ov.classList.add('open');
+  const err = document.getElementById('loginError');
+  if(err) err.textContent = msg || '';
+  setTimeout(()=>{ const e=document.getElementById('loginEmail'); if(e) e.focus(); }, 200);
+}
+function hideLogin(){
+  const ov = document.getElementById('loginModal');
+  if(ov) ov.classList.remove('open');
+}
+
+async function doLogin(){
+  const email = (document.getElementById('loginEmail').value||'').trim();
+  const pw = document.getElementById('loginPw').value||'';
+  const err = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  if(!email || !pw){ if(err) err.textContent = 'Inserisci email e password.'; return; }
+  if(!auth){ if(err) err.textContent = 'Autenticazione non pronta, riprova.'; return; }
+  if(btn){ btn.disabled = true; btn.textContent = '⟳ Accesso...'; }
+  if(err) err.textContent = '';
+  try{
+    await auth.signInWithEmailAndPassword(email, pw);
+    // onAuthStateChanged farà partire enterApp()
+  }catch(e){
+    let m = 'Email o password non corretti.';
+    if(e && e.code === 'auth/too-many-requests') m = 'Troppi tentativi, riprova tra qualche minuto.';
+    if(e && e.code === 'auth/invalid-email') m = 'Email non valida.';
+    if(err) err.textContent = m;
+  }
+  if(btn){ btn.disabled = false; btn.textContent = 'Accedi'; }
+}
+
+async function doLogout(){
+  try{ if(auth) await auth.signOut(); }catch(e){}
+  location.reload();
+}
+
 </script>
 </body>
 </html>
