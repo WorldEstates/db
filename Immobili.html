@@ -227,6 +227,13 @@ select:focus,input:focus,textarea:focus{border-color:var(--gold)}
 .agent-row .an{font-weight:600;font-size:13px}
 .agent-row .ac{font-size:11px;color:var(--muted)}
 .agent-row .aa{display:flex;gap:5px}
+.agent-row.editing{flex-direction:column;align-items:stretch;border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,76,.25)}
+.agent-row.editing .ae-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.agent-row.editing .ae-grid .full{grid-column:1/-1}
+.agent-row.editing label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:3px}
+.agent-row.editing input{width:100%;padding:7px 9px;font-size:13px}
+.agent-row.editing .ae-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+@media(max-width:600px){.agent-row.editing .ae-grid{grid-template-columns:1fr}}
 
 /* Tab bar */
 .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.25rem}
@@ -2028,22 +2035,38 @@ function removeMedia(idx){
 // AGENTS
 // ════════════════════════════════════════════════════════
 function openAgents(){
+  editingAgentId=null;
   renderAgentList();
   resetAgentForm();
   document.getElementById('agentModal').classList.add('open');
 }
-function closeAgents(){document.getElementById('agentModal').classList.remove('open')}
+function closeAgents(){editingAgentId=null;document.getElementById('agentModal').classList.remove('open')}
+
+function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 function renderAgentList(){
   const q=(document.getElementById('agentSearch').value||'').toLowerCase();
-  const sorted=sortAlpha(agents.map(a=>a.name));
-  const filtered=sorted.filter(n=>n.toLowerCase().includes(q));
+  const list=[...agents].sort((a,b)=>(a.name||'').localeCompare(b.name||'','it',{sensitivity:'base'}))
+    .filter(a=>a.id===editingAgentId || [a.name,a.phone,a.email].join(' ').toLowerCase().includes(q));
   const el=document.getElementById('agentListEl');
-  if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:.5rem">Nessun agente</div>';return;}
-  el.innerHTML=filtered.map(n=>{
-    const a=agents.find(x=>x.name===n);
+  if(!list.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:.5rem">Nessun agente</div>';return;}
+  el.innerHTML=list.map(a=>{
     const count=properties.filter(p=>p.agentId===a.id).length;
-    return`<div class="agent-row">
+    if(a.id===editingAgentId){
+      return`<div class="agent-row editing" id="agRow_${a.id}">
+        <div class="ae-grid">
+          <div class="full"><label>Nome / Agenzia *</label><input type="text" id="eaName" value="${escAttr(a.name)}"></div>
+          <div><label>Telefono</label><input type="tel" id="eaPhone" value="${escAttr(a.phone)}" placeholder="+39 ..."></div>
+          <div><label>Email</label><input type="email" id="eaEmail" value="${escAttr(a.email)}" placeholder="mail@..."></div>
+          <div class="full"><label>Sito web</label><input type="text" id="eaSite" value="${escAttr(a.site)}" placeholder="https://..."></div>
+        </div>
+        <div class="ae-actions">
+          <button class="btn btn-outline btn-sm" onclick="cancelAgentEdit()">Annulla</button>
+          <button class="btn btn-gold btn-sm" onclick="saveAgentInline('${a.id}')">💾 Salva</button>
+        </div>
+      </div>`;
+    }
+    return`<div class="agent-row" id="agRow_${a.id}">
       <div class="av">${initials(a.name)}</div>
       <div class="ai">
         <div class="an">${a.name}</div>
@@ -2051,13 +2074,21 @@ function renderAgentList(){
       </div>
       <div class="aa">
         <button class="btn btn-outline btn-sm" onclick="filterByAgent('${a.id}')">🏠 ${count}</button>
-        <button class="btn btn-outline btn-sm" onclick="editAgent('${a.id}')">✎</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteAgent('${a.id}')">🗑</button>
+        <button class="btn btn-outline btn-sm" onclick="editAgent('${a.id}')" title="Modifica">✎</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAgent('${a.id}')" title="Elimina">🗑</button>
       </div>
     </div>`;
   }).join('');
 }
 
+function afterAgentsChanged(){
+  populateAgentFilter();
+  renderAgentList();
+  saveSettings();                 // salva solo gli agenti, non tutti gli immobili
+  try{ applyFilters(); }catch(e){}
+}
+
+// Nuovo agente (modulo in basso)
 function saveAgent(){
   const name=document.getElementById('aName').value.trim();
   if(!name){alert('Inserisci il nome.');return;}
@@ -2069,27 +2100,56 @@ function saveAgent(){
   }else{
     agents.push({id:uid(),...data});
   }
-  save();populateAgentFilter();renderAgentList();resetAgentForm();
-  saveSettings();
+  resetAgentForm();
+  afterAgentsChanged();
 }
 
+// Modifica direttamente nella riga
 function editAgent(id){
-  const a=agents.find(x=>x.id===id);
-  if(!a)return;
-  document.getElementById('aName').value=a.name;
-  document.getElementById('aPhone').value=a.phone||'';
-  document.getElementById('aEmail').value=a.email||'';
-  document.getElementById('aSite').value=a.site||'';
-  document.getElementById('aEditId').value=a.id;
-  document.getElementById('agentFormTitle').textContent='Modifica Agente';
+  if(!agents.some(a=>a.id===id))return;
+  editingAgentId=id;
+  renderAgentList();
+  const row=document.getElementById('agRow_'+id);
+  if(row){
+    row.scrollIntoView({behavior:'smooth',block:'center'});
+    const inp=document.getElementById('eaPhone');
+    if(inp) setTimeout(()=>inp.focus(),250);
+    row.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{
+      if(e.key==='Enter') saveAgentInline(id);
+      if(e.key==='Escape') cancelAgentEdit();
+    }));
+  }
+}
+
+function saveAgentInline(id){
+  const idx=agents.findIndex(a=>a.id===id);
+  if(idx<0){cancelAgentEdit();return;}
+  const name=document.getElementById('eaName').value.trim();
+  if(!name){alert('Il nome non può essere vuoto.');return;}
+  agents[idx]={...agents[idx],
+    name,
+    phone:document.getElementById('eaPhone').value.trim(),
+    email:document.getElementById('eaEmail').value.trim(),
+    site:document.getElementById('eaSite').value.trim()};
+  editingAgentId=null;
+  afterAgentsChanged();
+}
+
+function cancelAgentEdit(){
+  editingAgentId=null;
+  renderAgentList();
 }
 
 function deleteAgent(id){
   if(!confirm('Eliminare agente?'))return;
   agents=agents.filter(a=>a.id!==id);
-  // unassign from properties
-  properties.forEach(p=>{if(p.agentId===id)p.agentId=null;});
-  save();populateAgentFilter();renderAgentList();
+  // rimuove l'agente dagli immobili e salva solo quelli toccati
+  properties.forEach(p=>{
+    if(p.agentId===id){ p.agentId=null; pendingChanges.props.add(p.id); }
+  });
+  try{ localStorage.setItem('ire_props', JSON.stringify(properties)); }catch(e){}
+  if(editingAgentId===id) editingAgentId=null;
+  afterAgentsChanged();
 }
 
 function resetAgentForm(){
